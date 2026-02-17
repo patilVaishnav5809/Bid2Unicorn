@@ -1,0 +1,131 @@
+﻿
+> base44-app@0.0.0 typecheck
+> tsc -p ./jsconfig.json
+
+src/components/admin/ActivityFeed.jsx(3,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/components/admin/AuctionControlPanel.jsx(3,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/components/admin/AuctionControlPanel.jsx(4,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/components/admin/AuctionControlPanel.jsx(5,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/components/admin/BreakingNewsPanel.jsx(3,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/components/admin/BreakingNewsPanel.jsx(4,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/components/admin/BreakingNewsPanel.jsx(5,26): error TS2307: Cannot find module '@/components/ui/textarea' or its corresponding type declarations.
+src/components/admin/BreakingNewsPanel.jsx(6,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/components/admin/PowerCardsPanel.jsx(3,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/components/admin/PowerCardsPanel.jsx(4,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/components/admin/TeamsWalletTable.jsx(3,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/components/admin/TeamsWalletTable.jsx(4,26): error TS2307: Cannot find module '@/components/ui/progress' or its corresponding type declarations.
+src/components/admin/TopBar.jsx(8,8): error TS2307: Cannot find module '@/components/ui/dropdown-menu' or its corresponding type declarations.
+src/components/ui/dialog.jsx(15,43): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/dialog.jsx(27,43): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/dialog.jsx(27,54): error TS2339: Property 'children' does not exist on type '{}'.
+src/components/ui/dialog.jsx(73,41): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/dialog.jsx(82,47): error TS2339: Property 'className' does not exist on type '{}'.
+src/pages/AdminDashboard.jsx(21,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/AdminDashboard.jsx(22,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/AdminDashboard.jsx(23,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/AdminDashboard.jsx(97,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(97,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(102,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(102,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(112,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(112,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(122,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(122,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/AdminDashboard.jsx(130,33): error TS2345: Argument of type '{ startup_id: any; team_id: any; amount: any; round: any; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(137,37): error TS2345: Argument of type '{ id: any; data: { current_price: any; }; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(143,33): error TS2345: Argument of type '{ type: string; message: string; team_id: any; startup_id: any; amount: any; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(153,37): error TS2345: Argument of type '{ id: any; data: { status: any; winning_team_id: any; }; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(160,36): error TS2345: Argument of type '{ id: any; data: { spent: any; }; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(166,35): error TS2345: Argument of type '{ type: string; message: string; team_id: any; startup_id: any; amount: any; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(184,34): error TS2345: Argument of type '{ id: any; data: { total_budget: number; }; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(189,33): error TS2345: Argument of type '{ type: string; message: string; team_id: any; amount: number; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(201,39): error TS2345: Argument of type '{ id: any; data: { status: string; }; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(206,33): error TS2345: Argument of type '{ type: string; message: string; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(218,33): error TS2345: Argument of type '{ type: string; message: string; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(225,33): error TS2345: Argument of type '{ id: any; data: { is_resolved: boolean; }; }' is not assignable to parameter of type 'void'.
+src/pages/AdminDashboard.jsx(333,10): error TS2322: Type '{ children: Element[]; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/AdminDashboard.jsx(334,12): error TS2741: Property 'className' is missing in type '{ children: Element; }' but required in type '{ [x: string]: any; className: any; }'.
+src/pages/AdminDashboard.jsx(335,14): error TS2559: Type '{ children: any[]; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/AuctionSettings.jsx(5,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/AuctionSettings.jsx(6,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/AuctionSettings.jsx(7,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/AuctionSettings.jsx(8,24): error TS2307: Cannot find module '@/components/ui/switch' or its corresponding type declarations.
+src/pages/AuctionSettings.jsx(55,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/AuctionSettings.jsx(55,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/AuctionSettings.jsx(62,40): error TS2345: Argument of type '{ id: any; data: { current_round: number; round_name: string; timer_seconds: number; is_auction_active: boolean; }; }' is not assignable to parameter of type 'void'.
+src/pages/AuctionSettings.jsx(64,40): error TS2345: Argument of type '{ current_round: number; round_name: string; timer_seconds: number; is_auction_active: boolean; }' is not assignable to parameter of type 'void'.
+src/pages/AuctionSettings.jsx(78,40): error TS2345: Argument of type '{ id: any; data: { is_auction_active: boolean; timer_end_time: string; current_round: number; round_name: string; timer_seconds: number; }; }' is not assignable to parameter of type 'void'.
+src/pages/AuctionSettings.jsx(80,40): error TS2345: Argument of type '{ is_auction_active: boolean; timer_end_time: string; current_round: number; round_name: string; timer_seconds: number; }' is not assignable to parameter of type 'void'.
+src/pages/AuctionSettings.jsx(86,40): error TS2345: Argument of type '{ id: any; data: { is_auction_active: boolean; }; }' is not assignable to parameter of type 'void'.
+src/pages/AuctionSettings.jsx(96,40): error TS2345: Argument of type '{ id: any; data: { timer_end_time: string; }; }' is not assignable to parameter of type 'void'.
+src/pages/Bids.jsx(5,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/Bids.jsx(6,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/Bids.jsx(7,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/BreakingNews.jsx(8,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/BreakingNews.jsx(9,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/BreakingNews.jsx(10,26): error TS2307: Cannot find module '@/components/ui/textarea' or its corresponding type declarations.
+src/pages/BreakingNews.jsx(11,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/BreakingNews.jsx(18,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/BreakingNews.jsx(275,10): error TS2322: Type '{ children: Element[]; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/BreakingNews.jsx(276,12): error TS2741: Property 'className' is missing in type '{ children: Element; }' but required in type '{ [x: string]: any; className: any; }'.
+src/pages/BreakingNews.jsx(277,14): error TS2559: Type '{ children: string; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/InviteUsers.jsx(3,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/InviteUsers.jsx(4,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/InviteUsers.jsx(5,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/InviteUsers.jsx(6,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/InviteUsers.jsx(8,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/Leaderboard.jsx(5,26): error TS2307: Cannot find module '@/components/ui/progress' or its corresponding type declarations.
+src/pages/PowerCards.jsx(8,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/PowerCards.jsx(9,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/PowerCards.jsx(10,26): error TS2307: Cannot find module '@/components/ui/textarea' or its corresponding type declarations.
+src/pages/PowerCards.jsx(11,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/PowerCards.jsx(12,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/PowerCards.jsx(19,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/PowerCards.jsx(260,10): error TS2322: Type '{ children: Element[]; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/PowerCards.jsx(261,12): error TS2741: Property 'className' is missing in type '{ children: Element; }' but required in type '{ [x: string]: any; className: any; }'.
+src/pages/PowerCards.jsx(262,14): error TS2559: Type '{ children: string; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Startups.jsx(8,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/Startups.jsx(9,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/Startups.jsx(10,26): error TS2307: Cannot find module '@/components/ui/textarea' or its corresponding type declarations.
+src/pages/Startups.jsx(11,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/Startups.jsx(12,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/Startups.jsx(19,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/Startups.jsx(90,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/Startups.jsx(90,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/Startups.jsx(144,40): error TS2345: Argument of type '{ id: any; data: { active_startup_id: any; is_auction_active: boolean; timer_end_time: string; }; }' is not assignable to parameter of type 'void'.
+src/pages/Startups.jsx(153,40): error TS2345: Argument of type '{ active_startup_id: any; is_auction_active: boolean; current_round: number; round_name: string; timer_seconds: number; timer_end_time: string; }' is not assignable to parameter of type 'void'.
+src/pages/Startups.jsx(327,10): error TS2322: Type '{ children: Element[]; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Startups.jsx(328,12): error TS2741: Property 'className' is missing in type '{ children: Element; }' but required in type '{ [x: string]: any; className: any; }'.
+src/pages/Startups.jsx(329,14): error TS2559: Type '{ children: string; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Teams.jsx(5,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/Teams.jsx(6,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/Teams.jsx(7,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/Teams.jsx(8,26): error TS2307: Cannot find module '@/components/ui/progress' or its corresponding type declarations.
+src/pages/Teams.jsx(15,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/Teams.jsx(242,10): error TS2322: Type '{ children: Element[]; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'children' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Teams.jsx(243,12): error TS2741: Property 'className' is missing in type '{ children: Element; }' but required in type '{ [x: string]: any; className: any; }'.
+src/pages/Teams.jsx(244,14): error TS2559: Type '{ children: string; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/UserAuction.jsx(10,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/UserAuction.jsx(11,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/UserAuction.jsx(12,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/UserAuction.jsx(13,26): error TS2307: Cannot find module '@/components/ui/progress' or its corresponding type declarations.
+src/pages/UserAuction.jsx(99,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/UserAuction.jsx(99,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/UserAuction.jsx(121,33): error TS2345: Argument of type '{ startup_id: any; team_id: any; amount: number; round: any; is_winning: boolean; }' is not assignable to parameter of type 'void'.
+src/pages/UserAuction.jsx(129,37): error TS2345: Argument of type '{ id: any; data: { current_price: number; }; }' is not assignable to parameter of type 'void'.
+src/pages/UserDashboard.jsx(7,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/UserDashboard.jsx(8,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/UserDashboard.jsx(9,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/UserDashboard.jsx(10,26): error TS2307: Cannot find module '@/components/ui/progress' or its corresponding type declarations.
+src/pages/UserLeaderboard.jsx(7,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/UserLeaderboard.jsx(8,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/UserLeaderboard.jsx(9,26): error TS2307: Cannot find module '@/components/ui/progress' or its corresponding type declarations.
+src/pages/UserPortfolio.jsx(10,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/UserPortfolio.jsx(11,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/UserPortfolio.jsx(12,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/UserPortfolio.jsx(13,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.

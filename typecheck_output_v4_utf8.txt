@@ -1,0 +1,45 @@
+﻿
+> base44-app@0.0.0 typecheck
+> tsc -p ./jsconfig.json
+
+src/components/admin/BreakingNewsPanel.jsx(63,15): error TS2322: Type '{ placeholder: string; value: string; onChange: (e: any) => void; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'placeholder' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/components/admin/TeamsWalletTable.jsx(70,21): error TS2322: Type '{ value: number; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/components/ui/dropdown-menu.jsx(48,52): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/progress.jsx(8,38): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/progress.jsx(8,49): error TS2339: Property 'value' does not exist on type '{}'.
+src/components/ui/select.jsx(41,50): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/select.jsx(56,52): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/textarea.jsx(7,38): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toast.jsx(12,43): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toast.jsx(41,35): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toast.jsx(41,46): error TS2339: Property 'variant' does not exist on type '{}'.
+src/components/ui/toast.jsx(53,41): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toast.jsx(54,4): error TS2741: Property 'altText' is missing in type '{ ref: ForwardedRef<any>; className: string; }' but required in type 'ToastActionProps'.
+src/components/ui/toast.jsx(66,40): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toast.jsx(82,40): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toast.jsx(92,46): error TS2339: Property 'className' does not exist on type '{}'.
+src/components/ui/toaster.jsx(12,18): error TS8024: JSDoc '@param' tag has name 'props', but there is no parameter with that name.
+src/components/ui/toaster.jsx(22,26): error TS2559: Type '{ children: any; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/components/ui/toaster.jsx(24,18): error TS2559: Type '{ children: any; }' has no properties in common with type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/BreakingNews.jsx(292,17): error TS2322: Type '{ value: string; onChange: (e: any) => void; placeholder: string; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Leaderboard.jsx(196,37): error TS2322: Type '{ value: number; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/PowerCards.jsx(289,17): error TS2322: Type '{ value: string; onChange: (e: any) => void; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Startups.jsx(90,20): error TS2339: Property 'id' does not exist on type 'void'.
+src/pages/Startups.jsx(90,24): error TS2339: Property 'data' does not exist on type 'void'.
+src/pages/Startups.jsx(144,40): error TS2345: Argument of type '{ id: any; data: { active_startup_id: any; is_auction_active: boolean; timer_end_time: string; }; }' is not assignable to parameter of type 'void'.
+src/pages/Startups.jsx(153,40): error TS2345: Argument of type '{ active_startup_id: any; is_auction_active: boolean; current_round: number; round_name: string; timer_seconds: number; timer_end_time: string; }' is not assignable to parameter of type 'void'.
+src/pages/Startups.jsx(356,17): error TS2322: Type '{ value: string; onChange: (e: any) => void; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/Teams.jsx(195,29): error TS2322: Type '{ value: number; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/UserAuction.jsx(260,35): error TS2322: Type '{ value: number; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/UserDashboard.jsx(266,23): error TS2322: Type '{ value: number; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
+src/pages/UserLeaderboard.jsx(218,37): error TS2322: Type '{ value: number; className: string; }' is not assignable to type 'IntrinsicAttributes & RefAttributes<any>'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & RefAttributes<any>'.
