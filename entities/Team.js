@@ -23,6 +23,20 @@ export default {
       "type": "boolean",
       "default": false
     },
+    "last_login_at": {
+      "type": "string",
+      "description": "Timestamp of last login"
+    },
+    "last_active_at": {
+      "type": "string",
+      "description": "Timestamp of last activity (heartbeat)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["online", "away", "offline"],
+      "default": "offline",
+      "description": "Current user status"
+    },
     "members": {
       "type": "array",
       "items": {

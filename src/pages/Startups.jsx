@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import { 
   Rocket, Plus, Edit2, Trash2, Play, 
   Search, Filter, CheckCircle, Clock, XCircle 
@@ -8,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import ImageUpload from "@/components/ui/ImageUpload";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,7 +45,8 @@ export default function Startups() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [dialog, setDialog] = useState({ open: false, startup: null });
   const [formData, setFormData] = useState({
-    name: "", domain: "fintech", description: "", base_price: 0, logo_url: ""
+    name: "", domain: "fintech", description: "", base_price: 0, logo_url: "",
+    users: "", growth: "", risk: "Medium"
   });
 
   const { data: startups = [] } = useQuery({
@@ -80,11 +84,39 @@ export default function Startups() {
     },
   });
 
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, string>} */
   const deleteStartup = useMutation({
     mutationFn: (id) => base44.entities.Startup.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["startups"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["startups"] });
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      toast.success("Startup deleted successfully");
+    },
+    onError: (err) => {
+      toast.error("Failed to delete startup: " + err.message);
+    }
   });
+
+  const handleDeleteStartup = async (startup) => {
+    if (!window.confirm(`Are you sure you want to delete "${startup.name}"? This will delete all associated bids.`)) {
+      return;
+    }
+
+    try {
+      // 1. Delete associated bids
+      await supabase.from('bids').delete().eq('startup_id', startup.id);
+      
+      // 2. Unlink from auction settings unconditionally
+      await supabase.from('auction_settings')
+        .update({ active_startup_id: null, is_auction_active: false })
+        .eq('active_startup_id', startup.id);
+
+      // 3. Delete the startup
+      await deleteStartup.mutateAsync(startup.id);
+    } catch (error) {
+      console.error("Delete failed:", error);
+      toast.error("Failed to delete startup: " + error.message);
+    }
+  };
 
   /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
   const updateSettings = useMutation({
@@ -105,20 +137,31 @@ export default function Startups() {
         domain: startup.domain,
         description: startup.description || "",
         base_price: startup.base_price,
-        logo_url: startup.logo_url || ""
+        logo_url: startup.logo_url || "",
+        users: startup.users || "",
+        growth: startup.growth || "",
+        risk: startup.risk || "Medium"
       });
     } else {
-      setFormData({ name: "", domain: "fintech", description: "", base_price: 0, logo_url: "" });
+      setFormData({ name: "", domain: "fintech", description: "", base_price: 0, logo_url: "", users: "", growth: "", risk: "Medium" });
     }
     setDialog({ open: true, startup });
   };
 
   const handleSave = async () => {
+    const payload = {
+        name: formData.name,
+        domain: formData.domain,
+        description: formData.description,
+        base_price: Number(formData.base_price) || 0,
+        logo_url: formData.logo_url
+    };
+
     if (dialog.startup) {
-      await updateStartup.mutateAsync({ id: dialog.startup.id, data: formData });
+      await updateStartup.mutateAsync({ id: dialog.startup.id, data: payload });
     } else {
       await createStartup.mutateAsync({
-        ...formData,
+        ...payload,
         status: "upcoming",
         order: startups.length + 1
       });
@@ -310,7 +353,7 @@ export default function Startups() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => deleteStartup.mutate(startup.id)}
+                        onClick={() => handleDeleteStartup(startup)}
                         className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -326,7 +369,7 @@ export default function Startups() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialog.open} onOpenChange={(open) => setDialog({ ...dialog, open })}>
-        <DialogContent className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-md">
+        <DialogContent aria-describedby={undefined} className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-md">
           <DialogHeader>
             <DialogTitle>{dialog.startup ? "Edit Startup" : "Add New Startup"}</DialogTitle>
           </DialogHeader>
@@ -360,23 +403,58 @@ export default function Startups() {
                 className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white h-20"
               />
             </div>
+            
+            {/* New Metrics Row */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="text-gray-400">Active Users</Label>
+                <Input
+                  value={formData.users}
+                  onChange={(e) => setFormData({ ...formData, users: e.target.value })}
+                  placeholder="e.g. 1M+"
+                  className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-400">Growth Rate</Label>
+                <Input
+                  value={formData.growth}
+                  onChange={(e) => setFormData({ ...formData, growth: e.target.value })}
+                  placeholder="e.g. 20% MoM"
+                  className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-400">Risk Profile</Label>
+                <Select value={formData.risk} onValueChange={(v) => setFormData({ ...formData, risk: v })}>
+                  <SelectTrigger className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0F1629] border-[#19388A]/50">
+                    <SelectItem value="Low" className="text-white">Low</SelectItem>
+                    <SelectItem value="Medium" className="text-white">Medium</SelectItem>
+                    <SelectItem value="High" className="text-white">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div>
               <Label className="text-gray-400">Base Price (in Lakhs)</Label>
               <Input
                 type="number"
-                value={formData.base_price}
-                onChange={(e) => setFormData({ ...formData, base_price: parseFloat(e.target.value) })}
+                value={formData.base_price === 0 ? '' : formData.base_price}
+                onChange={(e) => setFormData({ ...formData, base_price: e.target.value ? parseFloat(e.target.value) : 0 })}
                 className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
               />
             </div>
             <div>
-              <Label className="text-gray-400">Logo URL (optional)</Label>
-              <Input
-                value={formData.logo_url}
-                onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-                placeholder="https://..."
-                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
-              />
+              <Label className="text-gray-400">Logo Upload</Label>
+              <div className="mt-2">
+                <ImageUpload
+                  value={formData.logo_url}
+                  onChange={(url) => setFormData({ ...formData, logo_url: url })}
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button

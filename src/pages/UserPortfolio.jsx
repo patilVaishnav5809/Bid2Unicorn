@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 
 export default function UserPortfolio() {
-  const [user, setUser] = useState(null);
+  const [_user, setUser] = useState(null);
   const [myTeam, setMyTeam] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterDomain, setFilterDomain] = useState("all");

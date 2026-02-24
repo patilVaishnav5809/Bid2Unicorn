@@ -9,19 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 
 export default function UserLeaderboard() {
-  const [user, setUser] = useState(null);
   const [myTeam, setMyTeam] = useState(null);
 
   useEffect(() => {
     const loadUserAndTeam = async () => {
       try {
-        const user = await base44.auth.me();
-        setUser(user);
+        const currentUser = await base44.auth.me();
         
         const teams = await base44.entities.Team.list();
         const team = teams.find(t => 
-          t.members?.includes(user.email) || 
-          t.created_by === user.email
+          t.members?.includes(currentUser.email) || 
+          t.created_by === currentUser.email
         );
         setMyTeam(team);
       } catch (error) {

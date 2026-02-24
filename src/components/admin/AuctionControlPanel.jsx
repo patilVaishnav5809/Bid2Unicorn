@@ -1,23 +1,9 @@
 import React, { useState } from "react";
-import { Rocket, TrendingUp, CheckCircle, XCircle } from "lucide-react";
+import { Rocket, TrendingUp, CheckCircle, XCircle, Undo2, Users, TrendingUp as GrowthIcon, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export default function AuctionControlPanel({ activeStartup, teams, highestBid, onBidSubmit, onStatusChange }) {
-  const [selectedTeam, setSelectedTeam] = useState("");
-  const [bidAmount, setBidAmount] = useState("");
+export default function AuctionControlPanel({ activeStartup, teams, highestBid, settings, onIncrementChange, onStatusChange, onRevertSale, startups }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmitBid = async () => {
-    if (!selectedTeam || !bidAmount || !activeStartup) return;
-    
-    setIsSubmitting(true);
-    await onBidSubmit(selectedTeam, parseFloat(bidAmount));
-    setBidAmount("");
-    setSelectedTeam("");
-    setIsSubmitting(false);
-  };
 
   const handleConfirmSale = async () => {
     if (!highestBid || !activeStartup) return;
@@ -73,6 +59,30 @@ export default function AuctionControlPanel({ activeStartup, teams, highestBid, 
           </div>
         </div>
 
+        {/* New Metrics Row */}
+        {(activeStartup.users || activeStartup.growth || activeStartup.risk) && (
+          <div className="flex gap-4 mt-4 pt-4 border-t border-[#19388A]/30">
+            {activeStartup.users && (
+              <div className="flex items-center gap-1.5 bg-[#0B1020] px-3 py-1.5 rounded-md border border-[#19388A]/30 flex-1">
+                <Users className="w-3.5 h-3.5 text-blue-400" />
+                <span className="text-xs text-gray-300 font-medium truncate">{activeStartup.users}</span>
+              </div>
+            )}
+            {activeStartup.growth && (
+              <div className="flex items-center gap-1.5 bg-[#0B1020] px-3 py-1.5 rounded-md border border-[#19388A]/30 flex-1">
+                <GrowthIcon className="w-3.5 h-3.5 text-green-400" />
+                <span className="text-xs text-gray-300 font-medium truncate">{activeStartup.growth}</span>
+              </div>
+            )}
+            {activeStartup.risk && (
+              <div className="flex items-center gap-1.5 bg-[#0B1020] px-3 py-1.5 rounded-md border border-[#19388A]/30 flex-1">
+                <ShieldAlert className={`w-3.5 h-3.5 ${activeStartup.risk.toLowerCase() === 'high' ? 'text-red-400' : activeStartup.risk.toLowerCase() === 'medium' ? 'text-yellow-400' : 'text-green-400'}`} />
+                <span className="text-xs text-gray-300 font-medium">{activeStartup.risk}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Prices */}
         <div className="grid grid-cols-2 gap-4 mt-4">
           <div className="bg-[#0B1020] rounded-lg p-3">
@@ -105,37 +115,32 @@ export default function AuctionControlPanel({ activeStartup, teams, highestBid, 
         </div>
       )}
 
-      {/* Bid Input */}
+      {/* Global Bid Increment Setting */}
       <div className="p-4 border-b border-[#19388A]/30">
-        <p className="text-xs text-gray-500 uppercase mb-3">Manual Bid Entry</p>
+        <p className="text-xs text-gray-500 uppercase mb-3">Global Bid Increment</p>
         <div className="flex gap-3">
-          <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-            <SelectTrigger className="flex-1 bg-[#0B1020] border-[#19388A]/50 text-white">
-              <SelectValue placeholder="Select Team" />
-            </SelectTrigger>
-            <SelectContent className="bg-[#0F1629] border-[#19388A]/50">
-              {teams.map((team) => (
-                <SelectItem key={team.id} value={team.id} className="text-white hover:bg-[#19388A]/30">
-                  {team.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            type="number"
-            placeholder="Amount (L)"
-            value={bidAmount}
-            onChange={(e) => setBidAmount(e.target.value)}
-            className="w-32 bg-[#0B1020] border-[#19388A]/50 text-white"
-          />
-          <Button 
-            onClick={handleSubmitBid} 
-            disabled={isSubmitting || !selectedTeam || !bidAmount}
-            className="bg-[#19388A] hover:bg-[#19388A]/80 text-white"
-          >
-            Submit
-          </Button>
+          {[1, 2, 5].map((inc) => (
+              <Button
+                key={inc}
+                onClick={() => {
+                   setIsSubmitting(true);
+                   onIncrementChange(inc).finally(() => setIsSubmitting(false));
+                }}
+                disabled={isSubmitting || settings?.current_bid_increment === inc}
+                variant={settings?.current_bid_increment === inc ? "default" : "outline"}
+                className={`flex-1 font-bold ${
+                  settings?.current_bid_increment === inc
+                    ? "bg-lime-500 text-black shadow-[0_0_15px_rgba(132,204,22,0.4)]"
+                    : "border-lime-500/30 text-lime-400 hover:bg-lime-500/10 hover:text-lime-300"
+                }`}
+              >
+                +{inc} Lakh
+              </Button>
+          ))}
         </div>
+        <p className="text-[10px] text-gray-500 mt-3 text-center">
+          When teams click "Place Bid", the amount will increase by ₹{settings?.current_bid_increment || 1}L.
+        </p>
       </div>
 
       {/* Actions */}
@@ -157,6 +162,20 @@ export default function AuctionControlPanel({ activeStartup, teams, highestBid, 
           Mark Unsold
         </Button>
       </div>
+      
+      {/* Revert Sale Action */}
+      {startups && startups.some(s => s.status === 'sold') && (
+        <div className="px-4 pb-4">
+          <Button 
+            onClick={onRevertSale}
+            variant="ghost"
+            className="w-full text-xs text-gray-500 hover:text-white hover:bg-[#19388A]/20 h-8"
+          >
+            <Undo2 className="w-3 h-3 mr-2" />
+            Revert Last Sale
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

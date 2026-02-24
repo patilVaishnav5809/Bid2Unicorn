@@ -51,18 +51,22 @@ import AdminDashboard from './pages/AdminDashboard';
 import AuctionSettings from './pages/AuctionSettings';
 import Bids from './pages/Bids';
 import BreakingNews from './pages/BreakingNews';
-import Home from './pages/Home';
+
 import Leaderboard from './pages/Leaderboard';
 import PowerCards from './pages/PowerCards';
 import Startups from './pages/Startups';
 import Teams from './pages/Teams';
+import ScreenDashboard from './pages/ScreenDashboard';
 // import UserAuction from './pages/UserAuction';
 import UserDashboard from './pages/UserDashboard';
 // import UserLeaderboard from './pages/UserLeaderboard';
 // import UserPortfolio from './pages/UserPortfolio';
-import InviteUsers from './pages/InviteUsers';
+// import InviteUsers from './pages/InviteUsers';
+import TeamRegistration from './pages/TeamRegistration';
+import DatabaseViewer from './pages/DatabaseViewer';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import FinalJudgement from './pages/FinalJudgement';
 import __Layout from './Layout.jsx';
 
 
@@ -71,18 +75,21 @@ export const PAGES = {
     "AuctionSettings": AuctionSettings,
     "Bids": Bids,
     "BreakingNews": BreakingNews,
-    "Home": Home,
+
     "Landing": Landing,
     "Login": Login,
     "Leaderboard": Leaderboard,
     "PowerCards": PowerCards,
     "Startups": Startups,
     "Teams": Teams,
+    "ScreenDashboard": ScreenDashboard,
     // "UserAuction": UserAuction,
     "UserDashboard": UserDashboard,
     // "UserLeaderboard": UserLeaderboard,
     // "UserPortfolio": UserPortfolio,
-    "InviteUsers": InviteUsers,
+    "TeamRegistration": TeamRegistration,
+    "DatabaseViewer": DatabaseViewer,
+    "FinalJudgement": FinalJudgement,
 }
 
 export const pagesConfig = {

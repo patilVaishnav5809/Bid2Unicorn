@@ -1,42 +1,141 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { 
-  Trophy, Rocket, Wallet, Users, TrendingUp, Target, Clock, Zap
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { formatDistanceToNow } from "date-fns";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/AuthContext"; // Import useAuth
+import AuctionHeader from "../components/auction/AuctionHeader";
+import ActiveStartupCard from "../components/auction/ActiveStartupCard";
+import LiveBiddingPanel from "../components/auction/LiveBiddingPanel";
+import TeamsLeaderboard from "../components/auction/TeamsLeaderboard";
+import MyTeamSection from "../components/auction/MyTeamSection";
+import MyTeamWallet from "../components/auction/MyTeamWallet";
+import MyStartups from "../components/auction/MyStartups";
+import PowerCardsStrip from "../components/auction/PowerCardsStrip";
+import { AlertTriangle } from "lucide-react";
 
 export default function UserDashboard() {
-  const [user, setUser] = useState(null);
-  const [myTeam, setMyTeam] = useState(null);
-  const [bidAmount, setBidAmount] = useState("");
   const queryClient = useQueryClient();
+  const { user, isLoadingAuth } = useAuth(); // Use useAuth
+  const [myTeam, setMyTeam] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [showPowerCards, setShowPowerCards] = useState(false);
 
+  // Power Cards — read from activity_logs (same source the admin writes to)
+  const { data: powerCardUsageLogs = [] } = useQuery({
+    queryKey: ["myPowerCards", myTeam?.id],
+    queryFn: async () => {
+      if (!myTeam) return [];
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('type', 'power_card')
+        .eq('team_id', myTeam.id)
+        .like('message', '[CARD_USED:%');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!myTeam,
+    refetchInterval: 5000, // Poll every 5s for real-time sync with admin
+  });
+
+  // Parse which card types have been used by this team
+  const usedCardTypes = powerCardUsageLogs.map(log => {
+    const match = log.message?.match(/\[CARD_USED:([^\]]+)\]/);
+    return match ? match[1] : null;
+  }).filter(Boolean);
+
+  // Fetch allotted cards for this team
+  const { data: allottedCards = [] } = useQuery({
+    queryKey: ["allottedCards", myTeam?.id],
+    queryFn: async () => {
+      if (!myTeam) return [];
+      const { data, error } = await supabase
+        .from('power_cards')
+        .select('*')
+        .eq('team_id', myTeam.id);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!myTeam,
+    refetchInterval: 10000,
+  });
+
+  const POWER_CARDS_CONSTANTS = [
+    { id: "double_value", name: "Double Value", icon: "2️⃣", description: "2x Startups value in final scoring. Cost remains same." },
+    { id: "steal_startup", name: "Steal Startup", icon: "🦹", description: "Pay 80% to steal a startup won by another team within 10s." },
+    { id: "freeze_budget", name: "Freeze Budget", icon: "❄️", description: "One team cannot bid on the next startup." },
+    { id: "emergency_budget", name: "Emergency Budget", icon: "💰", description: "Instantly add ₹20M to your total budget." },
+    { id: "reverse_auction", name: "Reverse Auction", icon: "🔄", description: "Lowest bid wins instead of highest for one startup." },
+    { id: "block_team", name: "Block Team", icon: "🚫", description: "Reserve a specific startup (Coming Soon) so one team can't bid." },
+    { id: "insider_info", name: "Insider Info", icon: "🕵️", description: "Peek at next 3 startup stats before Round 2." },
+    { id: "wild_card", name: "Wild Card", icon: "🃏", description: "Design your own power (Free startup, Swap, etc.) - Must announce." },
+  ];
+
+  // Filter constants based on allottedCards
+  const allottedConstants = POWER_CARDS_CONSTANTS.filter(pc => 
+    allottedCards.some(a => a.type === pc.id)
+  );
+
+  const powerCards = allottedConstants.map(pc => ({
+      ...pc,
+      used: usedCardTypes.includes(pc.id),
+      status: usedCardTypes.includes(pc.id) ? 'used' : 'available',
+  }));
+
+  const handleUsePowerCard = async (card) => {
+    if (card.status === 'used' || card.status === 'disabled') {
+       alert("This card is not available.");
+       return;
+    }
+
+    if (!myTeam) {
+        alert("Team data not loaded yet.");
+        return;
+    }
+
+    // Since we don't have a loading state variable here per card, we just execute
+    try {
+      // Record card usage in activity_logs
+      // Admin dashboard will listen to this and update UI
+      const { error } = await supabase.from('activity_logs').insert({
+          team_id: myTeam.id,
+          team_name: myTeam.name,
+          type: 'power_card',
+          message: `[CARD_USED:${card.id}] ${card.name} activated for ${myTeam.name}`
+      });
+
+      if (error) throw error;
+      
+      // Instantly refresh the local UI
+      await queryClient.invalidateQueries({ queryKey: ["myPowerCards", myTeam.id] });
+      alert(`${card.name} activated successfully!`);
+    } catch (error) {
+      console.error("Error using power card:", error);
+      alert("Failed to use power card.");
+    }
+  };
+
+  // Load Team based on Authenticated User
   useEffect(() => {
-    const loadUserAndTeam = async () => {
+    const loadTeam = async () => {
+      if (!user) return; // Wait for user
+
       try {
-        const user = await base44.auth.me();
-        setUser(user);
-        
         const teams = await base44.entities.Team.list();
-        const team = teams.find(t => 
-          t.members?.includes(user.email) || 
-          t.created_by === user.email
-        );
+        // Since Admins create the teams, 'created_by' is always 'admin'.
+        // The definitive link for a user to their team is their email matching the team's 'leader_email'.
+        const team = teams.find(t => t.leader_email === user.email || (t.participants && t.participants.some(p => p.email === user.email)));
         setMyTeam(team);
       } catch (error) {
-        console.error("Error loading user/team:", error);
-        base44.auth.redirectToLogin();
+        console.error("Error loading team:", error);
       }
     };
     
-    loadUserAndTeam();
-  }, []);
+    loadTeam();
+  }, [user]); // Dependency on user
 
+  // Fetch Data
   const { data: startups = [] } = useQuery({
     queryKey: ["startups"],
     queryFn: () => base44.entities.Startup.list("order"),
@@ -49,7 +148,7 @@ export default function UserDashboard() {
 
   const { data: bids = [] } = useQuery({
     queryKey: ["bids"],
-    queryFn: () => base44.entities.Bid.list("-created_date", 100),
+    queryFn: () => base44.entities.Bid.list("-created_date"),
   });
 
   const { data: settingsArr = [] } = useQuery({
@@ -57,435 +156,291 @@ export default function UserDashboard() {
     queryFn: () => base44.entities.AuctionSettings.list(),
   });
 
+  // Derived Data
   const settings = settingsArr[0];
-  const activeStartup = settings?.is_auction_active ? startups.find(s => s.id === settings?.active_startup_id) : null;
+  const activeStartup = startups.find(s => s.id === settings?.active_startup_id);
   
-  const myPortfolio = myTeam ? startups.filter(s => s.winning_team_id === myTeam.id) : [];
-  const portfolioValue = myPortfolio.reduce((sum, s) => sum + (s.current_price || s.base_price), 0);
-  const remaining = myTeam ? myTeam.total_budget - (myTeam.spent || 0) : 0;
-  const spentPercentage = myTeam ? ((myTeam.spent || 0) / myTeam.total_budget) * 100 : 0;
+  // Real-time Timer
+  useEffect(() => {
+    if (!settings?.timer_end_time) return;
+    
+    const interval = setInterval(() => {
+      const end = new Date(settings.timer_end_time).getTime();
+      const now = Date.now();
+      const diff = Math.max(0, Math.floor((end - now) / 1000));
+      setTimeLeft(diff);
+    }, 1000);
 
-  const activeStartupBids = activeStartup 
+    return () => clearInterval(interval);
+  }, [settings?.timer_end_time]);
+
+  // Real-time Subscriptions
+  useEffect(() => {
+    const unsubscribeBid = base44.entities.Bid.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ["bids"] });
+      queryClient.invalidateQueries({ queryKey: ["startups"] });
+    });
+    const unsubscribeStartup = base44.entities.Startup.subscribe(() => {
+        queryClient.invalidateQueries({ queryKey: ["startups"] });
+    });
+    const unsubscribeSettings = base44.entities.AuctionSettings.subscribe(() => {
+        queryClient.invalidateQueries({ queryKey: ["settings"] });
+    });
+    const unsubscribeTeam = base44.entities.Team.subscribe(() => {
+        queryClient.invalidateQueries({ queryKey: ["teams"] });
+    });
+
+    return () => {
+        unsubscribeBid();
+        unsubscribeStartup();
+        unsubscribeSettings();
+        unsubscribeTeam();
+    };
+  }, [queryClient]);
+
+  // Calculations
+  const myStartups = myTeam ? startups.filter(s => s.winning_team_id === myTeam.id) : [];
+  
+  const startupBids = activeStartup 
     ? bids.filter(b => b.startup_id === activeStartup.id).sort((a, b) => b.amount - a.amount)
     : [];
   
-  const highestBid = activeStartupBids[0];
-  const minNextBid = (activeStartup?.current_price || activeStartup?.base_price || 0) + 1;
+  const currentBidIncrement = Number(settings?.current_bid_increment || 1);
 
-  const rankedTeams = teams
-    .map(t => ({
-      ...t,
-      value: startups
-        .filter(s => s.winning_team_id === t.id)
-        .reduce((sum, s) => sum + (s.current_price || s.base_price), 0),
-      owned: startups.filter(s => s.winning_team_id === t.id).length
-    }))
-    .sort((a, b) => b.value - a.value);
+  const highestBid = startupBids[0] ? {
+    amount: Number(startupBids[0].amount),
+    team: teams.find(t => t.id === startupBids[0].team_id)?.name || "Unknown",
+    minNext: currentBidIncrement
+  } : {
+    amount: activeStartup ? Number(activeStartup.base_price || 0) : 0,
+    team: "No Bids",
+    minNext: currentBidIncrement
+  };
 
+  const currentBidData = {
+    amount: highestBid.amount,
+    team: highestBid.team,
+    minNext: currentBidIncrement
+  };
+
+  const formattedBidHistory = startupBids.slice(0, 5).map(bid => ({
+    team: teams.find(t => t.id === bid.team_id)?.name || "Unknown",
+    amount: bid.amount,
+    time: "Just now" // Simplified for display
+  }));
+
+  const TeamsWithPortfolio = teams.map(team => {
+      const teamStartups = startups.filter(s => s.winning_team_id === team.id);
+      const portfolioValue = teamStartups.reduce((sum, s) => sum + (s.current_price || s.base_price), 0);
+      return {
+          ...team,
+          portfolio: portfolioValue,
+          remaining: team.total_budget - (team.spent || 0),
+          startups: teamStartups.length
+      };
+  });
+
+  const myTeamData = myTeam ? {
+      name: myTeam.name,
+      avatar: myTeam.name.charAt(0),
+      members: myTeam.participants || [], // Use participants saved by Admin
+      totalBudget: myTeam.total_budget,
+      spent: myTeam.spent || 0,
+      remaining: myTeam.total_budget - (myTeam.spent || 0)
+  } : null;
+
+  const formattedMyStartups = myStartups.map(s => ({
+      name: s.name,
+      category: s.domain,
+      price: s.current_price || s.base_price
+  }));
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Bidding Logic
   /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, any>} */
-  const createBidMutation = useMutation({
+  const createBid = useMutation({
     mutationFn: (data) => base44.entities.Bid.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bids"] });
-      setBidAmount("");
+      queryClient.invalidateQueries({ queryKey: ["startups"] });
     },
   });
 
   /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
-  const updateStartupMutation = useMutation({
+  const updateStartup = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Startup.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["startups"] }),
   });
 
+  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, any>} */
+  const createLog = useMutation({
+    mutationFn: (data) => base44.entities.ActivityLog.create(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["logs"] }),
+  });
+
   const handlePlaceBid = async () => {
-    if (!activeStartup || !myTeam) return;
+    if (!myTeam || !activeStartup) return;
     
-    const amount = parseFloat(bidAmount);
-    if (amount < minNextBid) {
-      alert(`Minimum bid is ₹${minNextBid}L`);
-      return;
-    }
-    
-    if (amount > remaining) {
-      alert("Insufficient budget!");
+    // Calculate next bid amount (Current Highest + Increment)
+    const currentHighest = Number(highestBid.amount); 
+    const isFirstBid = startupBids.length === 0;
+    const bidAmount = isFirstBid ? (Number(activeStartup.base_price) + currentBidIncrement) : (currentHighest + currentBidIncrement);
+
+    const remaining = myTeam.total_budget - (myTeam.spent || 0);
+    if (bidAmount > remaining) {
+      alert(`You only have ₹${remaining}L available`);
       return;
     }
 
-    await createBidMutation.mutateAsync({
-      startup_id: activeStartup.id,
-      team_id: myTeam.id,
-      amount,
-      round: settings?.current_round || 1,
-      is_winning: true
-    });
+    try {
+        await createBid.mutateAsync({
+            startup_id: activeStartup.id,
+            team_id: myTeam.id,
+            amount: bidAmount,
+            round: settings?.current_round || 1,
+            is_winning: false
+        });
 
-    await updateStartupMutation.mutateAsync({
-      id: activeStartup.id,
-      data: { current_price: amount }
-    });
+        await updateStartup.mutateAsync({
+            id: activeStartup.id,
+            data: { current_price: bidAmount }
+        });
+
+        await createLog.mutateAsync({
+            type: "bid",
+            message: `${myTeam.name} placed a bid of ₹${bidAmount}L on ${activeStartup.name}`,
+            team_id: myTeam.id,
+            startup_id: activeStartup.id,
+            amount: bidAmount
+        });
+    } catch (e) {
+        console.error("Bid failed", e);
+    }
   };
 
+
+
+  if (isLoadingAuth) {
+      return <div className="min-h-screen bg-[#050814] text-white flex items-center justify-center">Loading Authentication...</div>;
+  }
+
   if (!user) {
-    return (
-      <div className="min-h-screen bg-[#0A1628] flex items-center justify-center">
-        <div className="text-center">
-          <Trophy className="w-16 h-16 text-[#4F91CD] mx-auto mb-4 animate-pulse" />
-          <p className="text-gray-500">Loading...</p>
-        </div>
-      </div>
-    );
+       return <div className="min-h-screen bg-[#050814] text-white flex items-center justify-center">Please Log In</div>;
   }
 
   if (!myTeam) {
-    return (
-      <div className="min-h-screen bg-[#0A1628] flex items-center justify-center p-6">
-        <div className="text-center max-w-md">
-          <Trophy className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">No Team Assigned</h2>
-          <p className="text-gray-500 mb-4">
-            You haven't been assigned to a team yet. An administrator needs to add your email ({user.email}) to a team.
-          </p>
-        </div>
-      </div>
-    );
+       return <div className="min-h-screen bg-[#050814] text-white flex items-center justify-center">Loading Team Data...</div>;
   }
 
-
-
   return (
-    <div className="min-h-screen bg-[#0A1628] text-white">
-      {/* Top Header */}
-      <header className="bg-[#0F1A2E] border-b border-[#1E3A5F] px-6 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center">
-              <Trophy className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold">Startup Premier League</h1>
-              <p className="text-xs text-gray-400">Dashboard • {myTeam.name}</p>
+    <div className="min-h-screen bg-gradient-to-br from-[#050505] via-[#0a0a0a] to-[#000000] text-gray-200 overflow-hidden font-sans">
+      {/* Cinematic Ambient glow effects */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[30rem] h-[30rem] bg-amber-500/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[25rem] h-[25rem] bg-yellow-600/5 rounded-full blur-[100px]" />
+        <div className="absolute top-1/2 left-1/2 w-[20rem] h-[20rem] bg-orange-500/5 rounded-full blur-[80px]" />
+      </div>
+
+      <div className="relative z-10 flex flex-col h-screen">
+        {/* Header */}
+        <AuctionHeader 
+          timeLeft={formatTime(timeLeft)} 
+          currentStartup={activeStartup ? `${activeStartup.order || '?'}` : "-"} 
+          totalStartups={startups.length} 
+        />
+
+        {/* Main Content */}
+        <div className="flex-1 grid grid-cols-12 gap-3 p-3 pb-2 overflow-hidden">
+          {/* Left Column */}
+          <div className="col-span-12 lg:col-span-3 flex flex-col gap-4">
+             {myTeamData && <MyTeamSection team={myTeamData} />}
+             {myTeamData && (
+                <MyTeamWallet 
+                totalBudget={myTeamData.totalBudget} 
+                spent={myTeamData.spent} 
+                remaining={myTeamData.remaining} 
+                />
+            )}
+            <MyStartups startups={formattedMyStartups} />
+          </div>
+
+          {/* Center Column - Merged Card */}
+          <div className="col-span-12 lg:col-span-5 flex flex-col h-full">
+            <div className="flex-1 bg-[#0F1629] border border-[#19388A]/30 rounded-xl overflow-hidden flex flex-col shadow-2xl relative">
+              {/* Background gradient for the merged card */}
+              <div className="absolute inset-0 bg-gradient-to-b from-[#19388A]/5 to-transparent pointer-events-none" />
+              
+              <div className="p-1 flex-1 relative">
+                 {activeStartup ? (
+                       <ActiveStartupCard 
+                        startup={{
+                           id: activeStartup.id,
+                           name: activeStartup.name,
+                           logo: activeStartup.logo_url,
+                           description: activeStartup.description,
+                           category: activeStartup.domain,
+                           basePrice: activeStartup.base_price,
+                           users: activeStartup.users,
+                           growth: activeStartup.growth,
+                           risk: activeStartup.risk 
+                        }} 
+                        className="border-none shadow-none bg-transparent h-full" 
+                      />
+                 ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                        <AlertTriangle className="w-12 h-12 mb-4 text-yellow-500" />
+                        <p>No Active Auction</p>
+                    </div>
+                 )}
+              </div>
+              
+              <div className="bg-[#050814]/30 backdrop-blur-sm border-t border-[#19388A]/30">
+                 {activeStartup && (
+                     <LiveBiddingPanel 
+                        currentBid={currentBidData}
+                        bidHistory={formattedBidHistory}
+                        onPlaceBid={handlePlaceBid}
+                        myTeamName={myTeam?.name}
+                        className="border-none shadow-none bg-transparent"
+                    />
+                 )}
+              </div>
             </div>
           </div>
-          
-          <div className="flex items-center gap-6">
-            <div className="text-right">
-              <p className="text-xs text-gray-500 uppercase">ROUND {settings?.current_round || 1}</p>
-              <p className="text-sm font-semibold text-white">{settings?.round_name || "IPL-Style Startup Auction"}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500">CURRENT</p>
-              <p className="text-lg font-bold text-orange-400">{remaining}L</p>
-            </div>
+
+          {/* Right Column */}
+          <div className="col-span-12 lg:col-span-4">
+            <TeamsLeaderboard teams={TeamsWithPortfolio} myTeamName={myTeam?.name} />
           </div>
         </div>
-      </header>
 
-      <div className="flex h-[calc(100vh-64px)]">
-        {/* Left Sidebar */}
-        <aside className="w-64 bg-[#0F1A2E] border-r border-[#1E3A5F] overflow-y-auto">
-          {/* My Team */}
-          <div className="p-4 border-b border-[#1E3A5F]">
-            <div className="flex items-center gap-2 mb-3">
-              <Users className="w-4 h-4 text-blue-400" />
-              <h3 className="text-sm font-semibold text-gray-400">My Team</h3>
-            </div>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
-                <span className="text-lg font-bold">{myTeam.name?.charAt(0)}</span>
-              </div>
-              <h2 className="text-lg font-bold text-white">{myTeam.name}</h2>
-            </div>
-            
-            {myTeam.members && myTeam.members.length > 0 && (
-              <div className="space-y-2">
-                {myTeam.members.slice(0, 4).map((email, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-blue-900 flex items-center justify-center text-xs">
-                        {email.charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-gray-300">{email.split('@')[0]}</span>
-                    </div>
-                    <span className="text-xs text-gray-500">Member</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Power Cards Toggle Button */}
+        <motion.button
+          onClick={() => setShowPowerCards(!showPowerCards)}
+          className="fixed bottom-20 right-6 z-50 w-16 h-16 rounded-full bg-gradient-to-br from-yellow-500 via-amber-600 to-yellow-700 text-black border border-yellow-400/50 flex items-center justify-center shadow-lg hover:shadow-[0_0_20px_rgba(245,158,11,0.5)] transition-shadow"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+        >
+          <motion.span 
+            className="text-3xl font-bold"
+            animate={{ rotate: showPowerCards ? 180 : 0 }}
+          >
+            ⚡
+          </motion.span>
+        </motion.button>
 
-          {/* My Team Wallet */}
-          <div className="p-4 border-b border-[#1E3A5F]">
-            <div className="flex items-center gap-2 mb-4">
-              <Wallet className="w-4 h-4 text-green-400" />
-              <h3 className="text-sm font-semibold text-gray-400">My Team Wallet</h3>
-            </div>
-            
-            <div className="flex justify-center mb-4">
-              <div className="relative w-32 h-32">
-                <svg className="transform -rotate-90 w-32 h-32">
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="56"
-                    stroke="#1E3A5F"
-                    strokeWidth="12"
-                    fill="none"
-                  />
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="56"
-                    stroke="#10B981"
-                    strokeWidth="12"
-                    fill="none"
-                    strokeDasharray={`${2 * Math.PI * 56}`}
-                    strokeDashoffset={`${2 * Math.PI * 56 * (spentPercentage / 100)}`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <p className="text-2xl font-bold text-green-400">₹{remaining}L</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Total Budget</span>
-                <span className="text-white font-semibold">₹{myTeam.total_budget}L</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-red-400">Spent</span>
-                <span className="text-red-400 font-semibold">₹{myTeam.spent || 0}L</span>
-              </div>
-            </div>
-            
-            <Progress value={spentPercentage} className="h-2 mt-3 bg-[#1E3A5F]" />
-            <div className="flex justify-between text-xs mt-1">
-              <span className="text-red-400">{Math.round(spentPercentage)}% used</span>
-              <span className="text-green-400">{Math.round(100 - spentPercentage)}% left</span>
-            </div>
-          </div>
-
-          {/* My Startups */}
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Rocket className="w-4 h-4 text-purple-400" />
-              <h3 className="text-sm font-semibold text-gray-400">My Startups</h3>
-              <span className="ml-auto text-xs text-gray-500">{myPortfolio.length} owned</span>
-            </div>
-
-            {myPortfolio.length > 0 ? (
-              <div className="space-y-2 mb-4">
-                {myPortfolio.map(startup => (
-                  <div key={startup.id} className="bg-[#1E3A5F]/30 rounded-lg p-3 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-xs font-bold">
-                      {startup.name?.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{startup.name}</p>
-                      <p className="text-xs text-gray-500 capitalize">{startup.domain?.replace(/_/g, ' ')}</p>
-                    </div>
-                    <p className="text-sm font-bold text-blue-400">₹{startup.current_price || startup.base_price}L</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No startups yet</p>
-            )}
-
-            <div className="pt-3 border-t border-[#1E3A5F]">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">PORTFOLIO VALUE</span>
-                <span className="text-blue-400 font-bold">₹{portfolioValue}L</span>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* Center - Auction Panel */}
-        <main className="flex-1 overflow-y-auto p-6">
-          {activeStartup ? (
-            <div className="max-w-2xl mx-auto">
-              {/* Auction Card */}
-              <div className="bg-[#0F1A2E] rounded-xl border border-[#1E3A5F] overflow-hidden mb-6">
-                <div className="p-6">
-                  <div className="flex items-start gap-4 mb-6">
-                    <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-red-600 to-pink-600 flex items-center justify-center">
-                      {activeStartup.logo_url ? (
-                        <img src={activeStartup.logo_url} alt={activeStartup.name} className="w-full h-full object-cover rounded-xl" />
-                      ) : (
-                        <span className="text-3xl font-bold">{activeStartup.name?.charAt(0)}</span>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge className="bg-blue-600 text-white border-0 text-xs capitalize">{activeStartup.domain?.replace(/_/g, " ")}</Badge>
-                        <span className="text-2xl font-bold text-white">{activeStartup.name}</span>
-                      </div>
-                      <p className="text-sm text-gray-400">{activeStartup.description || "Instant B2B payments for SMEs across emerging markets"}</p>
-                    </div>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-[#1E3A5F]/30 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Users className="w-3 h-3 text-gray-500" />
-                        <span className="text-xs text-gray-500">Users</span>
-                      </div>
-                      <p className="text-lg font-bold text-white">45K</p>
-                    </div>
-                    <div className="bg-[#1E3A5F]/30 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <TrendingUp className="w-3 h-3 text-gray-500" />
-                        <span className="text-xs text-gray-500">Growth</span>
-                      </div>
-                      <p className="text-lg font-bold text-green-400">+180%</p>
-                    </div>
-                    <div className="bg-[#1E3A5F]/30 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Target className="w-3 h-3 text-gray-500" />
-                        <span className="text-xs text-gray-500">Risk</span>
-                      </div>
-                      <p className="text-lg font-bold text-yellow-400">Medium</p>
-                    </div>
-                  </div>
-
-                  {/* Base Price */}
-                  <div className="bg-[#1E3A5F]/50 rounded-lg p-4 mb-6">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500 uppercase">Base Price</span>
-                      <span className="text-3xl font-bold text-white">₹{activeStartup.base_price}L</span>
-                    </div>
-                  </div>
-
-                  {/* Live Bidding */}
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Zap className="w-4 h-4 text-green-400" />
-                      <h3 className="text-sm font-semibold text-white">Live Bidding</h3>
-                      <Badge className="bg-green-500/20 text-green-400 border-0 text-xs ml-auto">LIVE</Badge>
-                    </div>
-
-                    <div className="text-center mb-4">
-                      <p className="text-xs text-gray-500 uppercase mb-2">Current Highest Bid</p>
-                      <p className="text-5xl font-bold text-green-400 mb-2">₹{highestBid?.amount || activeStartup.base_price}L</p>
-                      {highestBid && (
-                        <Badge className="bg-blue-600 text-white border-0">
-                          {teams.find(t => t.id === highestBid.team_id)?.name || "Unknown Team"}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Recent Bids */}
-                    <div className="bg-[#1E3A5F]/30 rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
-                      <p className="text-xs text-gray-500 uppercase mb-2">Recent Bids</p>
-                      <div className="space-y-2">
-                        {activeStartupBids.slice(0, 5).map(bid => (
-                          <div key={bid.id} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-300">{teams.find(t => t.id === bid.team_id)?.name}</span>
-                            <span className="font-bold text-white">₹{bid.amount}L</span>
-                            <span className="text-xs text-gray-500">{formatDistanceToNow(new Date(bid.created_date), { addSuffix: true })}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Bid Input */}
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        value={bidAmount}
-                        onChange={(e) => setBidAmount(e.target.value)}
-                        placeholder={`Min: ₹${minNextBid}L`}
-                        className="bg-[#1E3A5F] border-[#1E3A5F] text-white flex-1"
-                      />
-                      <Button
-                        onClick={handlePlaceBid}
-                        disabled={!bidAmount || parseFloat(bidAmount) < minNextBid}
-                        className="bg-lime-500 hover:bg-lime-600 text-black font-bold px-8"
-                      >
-                        <Target className="w-4 h-4 mr-2" />
-                        PLACE BID - ₹{bidAmount || minNextBid}L
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Min next bid: ₹{minNextBid}L (₹1L higher)</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-20">
-              <Clock className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-white mb-2">No Active Auction</h2>
-              <p className="text-gray-500">Waiting for the next round to begin</p>
-            </div>
-          )}
-        </main>
-
-        {/* Right Sidebar - Leaderboard */}
-        <aside className="w-80 bg-[#0F1A2E] border-l border-[#1E3A5F] overflow-y-auto">
-          <div className="p-4 border-b border-[#1E3A5F]">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-yellow-400" />
-              <h3 className="text-sm font-semibold text-white">Teams Leaderboard</h3>
-            </div>
-          </div>
-
-          <div className="p-4">
-            <div className="grid grid-cols-3 gap-2 text-xs text-gray-500 uppercase mb-3 px-2">
-              <span>Team</span>
-              <span className="text-right">Portfolio</span>
-              <span className="text-right">Budget</span>
-              <span className="text-right">Owned</span>
-            </div>
-
-            <div className="space-y-2">
-              {rankedTeams.map((team, idx) => (
-                <div
-                  key={team.id}
-                  className={`rounded-lg p-3 ${
-                    team.id === myTeam?.id 
-                      ? 'bg-blue-600/20 border border-blue-500/50' 
-                      : 'bg-[#1E3A5F]/30'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      idx === 0 ? 'bg-yellow-500 text-black' :
-                      idx === 1 ? 'bg-gray-400 text-black' :
-                      idx === 2 ? 'bg-orange-600 text-white' :
-                      'bg-gray-700 text-gray-400'
-                    }`}>
-                      {idx + 1}
-                    </div>
-                    <div className="w-8 h-8 rounded bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-sm font-bold">
-                      {team.name?.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{team.name}</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <p className="text-gray-500">Portfolio</p>
-                      <p className="font-bold text-green-400">₹{team.value}L</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-gray-500">Budget</p>
-                      <p className="font-bold text-blue-400">₹{team.total_budget - (team.spent || 0)}L</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-gray-500">Owned</p>
-                      <p className="font-bold text-white">{team.owned}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
+        {/* Power Cards Strip */}
+        <PowerCardsStrip 
+          cards={powerCards} 
+          onUseCard={handleUsePowerCard}
+          isVisible={showPowerCards}
+          onClose={() => setShowPowerCards(false)}
+        />
       </div>
     </div>
   );

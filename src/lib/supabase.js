@@ -10,19 +10,51 @@ if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'YOUR_SUPABASE_URL') {
 // Create client only if keys present and URL is valid, else mock it to prevent crash
 const isValidUrl = (url) => url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
 
+/** @type {any} */
 export const supabase = (isValidUrl(supabaseUrl) && supabaseAnonKey && supabaseUrl !== 'YOUR_SUPABASE_URL') 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : {
-      from: () => ({
-        select: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
-        insert: () => Promise.resolve({ data: null, error: null }),
-        update: () => Promise.resolve({ data: null, error: null }),
-        delete: () => Promise.resolve({ data: null, error: null }),
+      from: () => {
+        const builder = {
+            select: () => builder,
+            insert: () => builder, 
+            update: () => builder,
+            delete: () => builder,
+            eq: () => builder,
+            order: () => builder,
+            single: () => builder,
+            maybeSingle: () => builder,
+            limit: () => builder,
+            // Make it awaitable/thenable
+            then: (onfulfilled, onrejected) => {
+                return Promise.resolve({ data: [], error: null })
+                    .then(onfulfilled, onrejected);
+            }
+        };
+        return builder;
+      },
+      channel: () => ({
+        on: () => ({ subscribe: () => {} }),
+        subscribe: () => {}
       }),
+      removeChannel: () => {},
       auth: {
         getUser: () => Promise.resolve({ data: { user: null }, error: null }),
         signInWithPassword: () => Promise.resolve({ data: {}, error: { message: "Supabase not configured" } }),
+        signUp: () => Promise.resolve({ data: { user: null }, error: null }),
+        updateUser: () => Promise.resolve({ data: { user: null }, error: null }),
         signOut: () => Promise.resolve({ error: null }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-      }
+      },
+      storage: {
+        from: () => ({
+          upload: () => Promise.resolve({
+            data: null,
+            error: { message: "Supabase storage not configured" }
+          }),
+          getPublicUrl: () => ({
+            data: { publicUrl: "" }
+          }),
+        }),
+      },
     };

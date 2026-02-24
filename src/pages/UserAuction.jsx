@@ -15,7 +15,7 @@ import { formatDistanceToNow } from "date-fns";
 
 export default function UserAuction() {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(null);
+  const [_user, setUser] = useState(null);
   const [myTeam, setMyTeam] = useState(null);
   const [bidAmount, setBidAmount] = useState("");
   const [timeLeft, setTimeLeft] = useState(0);
@@ -28,10 +28,7 @@ export default function UserAuction() {
         setUser(user);
         
         const teams = await base44.entities.Team.list();
-        const team = teams.find(t => 
-          t.members?.includes(user.email) || 
-          t.created_by === user.email
-        );
+        const team = teams.find(t => t.leader_email === user.email || (t.participants && t.participants.some(p => p.email === user.email)));
         setMyTeam(team);
       } catch (error) {
         console.error("Error loading user/team:", error);
@@ -79,7 +76,7 @@ export default function UserAuction() {
 
   // Real-time bid subscription
   useEffect(() => {
-    const unsubscribe = base44.entities.Bid.subscribe((event) => {
+    const unsubscribe = base44.entities.Bid.subscribe((_event) => {
       queryClient.invalidateQueries({ queryKey: ["bids"] });
       queryClient.invalidateQueries({ queryKey: ["startups"] });
     });

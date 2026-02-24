@@ -12,7 +12,9 @@ import PowerCardsPanel from "../components/admin/PowerCardsPanel";
 import BreakingNewsPanel from "../components/admin/BreakingNewsPanel";
 import LeaderboardPanel from "../components/admin/LeaderboardPanel";
 import ActivityFeed from "../components/admin/ActivityFeed";
+import AllotPowerCardsDialog from "../components/admin/AllotPowerCardsDialog";
 
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -22,16 +24,36 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { validateEmailSyntax } from "@/utils/emailValidation";
 
 export default function AdminDashboard() {
   const queryClient = useQueryClient();
-  const [walletDialog, setWalletDialog] = useState({ open: false, team: null });
-  const [walletAmount, setWalletAmount] = useState("");
-  
+
+  // Edit Team State
+  const [editTeamDialog, setEditTeamDialog] = useState(false);
+  const [editingTeamId, setEditingTeamId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    leaderName: "",
+    leaderEmail: "",
+    budget: "",
+    logo: ""
+  });
+
   // Add Team State
   const [addTeamDialog, setAddTeamDialog] = useState(false);
-  const [newTeam, setNewTeam] = useState({ name: "", budget: "500", logo: "" });
+  const [newTeam, setNewTeam] = useState({
+    name: "",
+    budget: "500",
+    logo: "",
+    leaderName: "",
+    leaderEmail: ""
+  });
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
+
+  // Allot Cards State
+  const [allotCardsDialog, setAllotCardsDialog] = useState(false);
+  const [allottingTeam, setAllottingTeam] = useState(null);
 
   // Check if user is admin
   useEffect(() => {
@@ -62,18 +84,33 @@ export default function AdminDashboard() {
         // Try fetching from Supabase first
         const { data, error } = await supabase.from('teams').select('*').order('name');
         if (!error && data && data.length > 0) {
-            return data.map(t => ({
-                id: t.id,
-                name: t.name,
-                total_budget: t.total_budget || t.budget || 500,
-                spent: t.spent || 0,
-                logo_url: t.logo_url,
-                is_online: false // Supabase doesn't track this yet
-            }));
+            const now = Date.now();
+            const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+            return data.map(t => {
+                // Derive online status from last_active_at with 15-min timeout
+                const lastActive = t.last_active_at ? new Date(t.last_active_at).getTime() : 0;
+                const isRecentlyActive = (now - lastActive) < INACTIVITY_TIMEOUT;
+                const computedOnline = t.is_online && isRecentlyActive;
+
+                return {
+                    id: t.id,
+                    name: t.name,
+                    total_budget: t.total_budget || t.budget || 500,
+                    spent: t.spent || 0,
+                    logo_url: t.logo_url,
+                    leader_name: t.leader_name,
+                    leader_email: t.leader_email,
+                    is_online: computedOnline,
+                    last_login_at: t.last_login_at,
+                    last_active_at: t.last_active_at,
+                    status: computedOnline ? 'online' : (isRecentlyActive ? 'away' : 'offline')
+                };
+            });
         }
         // Fallback to mock
         return base44.entities.Team.list();
     },
+    refetchInterval: 10000, // Poll every 10s for online status updates
   });
 
   const { data: bids = [] } = useQuery({
@@ -81,9 +118,50 @@ export default function AdminDashboard() {
     queryFn: () => base44.entities.Bid.list("-created_date"),
   });
 
-  const { data: powerCards = [] } = useQuery({
-    queryKey: ["powerCards"],
-    queryFn: () => base44.entities.PowerCard.list(),
+  // Fetch power card usage from activity_logs (bypasses power_cards table constraint)
+  const { data: powerCardUsageLogs = [] } = useQuery({
+    queryKey: ["powerCardUsage"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('type', 'power_card')
+        .like('message', '[CARD_USED:%');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch allotted power cards
+  const { data: allottedCards = [], refetch: refetchAllottedCards } = useQuery({
+    queryKey: ["allottedCards"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('power_cards').select('*');
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 10000,
+  });
+
+  // Transform activity logs into a format PowerCardsPanel understands
+  // Message format: "[CARD_USED:<card_type>] <card_name> activated for <team_name>"
+  const powerCardUsage = [];
+  powerCardUsageLogs.forEach(log => {
+    try {
+      const match = log.message?.match(/\[CARD_USED:([^\]]+)\]/);
+      if (match) {
+        const cardType = match[1];
+        // Deduplicate
+        if (!powerCardUsage.some(c => c.team_id === log.team_id && c.type === cardType)) {
+          powerCardUsage.push({
+            id: log.id,
+            type: cardType,
+            team_id: log.team_id,
+            status: "used"
+          });
+        }
+      }
+    } catch {}
   });
 
   const { data: news = [] } = useQuery({
@@ -109,12 +187,6 @@ export default function AdminDashboard() {
     : null;
 
   // Mutations
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, any>} */
-  const createBid = useMutation({
-    mutationFn: (data) => base44.entities.Bid.create(data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bids"] }),
-  });
-
   /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
   const updateStartup = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Startup.update(id, data),
@@ -133,11 +205,7 @@ export default function AdminDashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["news"] }),
   });
 
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
-  const updatePowerCard = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.PowerCard.update(id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["powerCards"] }),
-  });
+  // updatePowerCard removed — power card state is now tracked via activity_logs
 
   /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, any>} */
   const createLog = useMutation({
@@ -152,38 +220,41 @@ export default function AdminDashboard() {
   });
 
   // Handlers
-  const handleBidSubmit = async (teamId, amount) => {
-    if (!activeStartup) return;
+    /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
+  const updateSettings = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.AuctionSettings.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] }),
+  });
 
-    await createBid.mutateAsync({
-      startup_id: activeStartup.id,
-      team_id: teamId,
-      amount,
-      round: settings?.current_round || 1
-    });
-
-    await updateStartup.mutateAsync({
-      id: activeStartup.id,
-      data: { current_price: amount }
-    });
-
-    const team = teams.find(t => t.id === teamId);
-    await createLog.mutateAsync({
-      type: "bid",
-      message: `${team?.name || "Team"} placed a bid of ₹${amount}L on ${activeStartup.name}`,
-      team_id: teamId,
-      startup_id: activeStartup.id,
-      amount
-    });
+  // Handlers
+  const handleIncrementChange = async (incrementSize) => {
+    if (!settings) {
+       toast.error("Auction settings not found. Please initialize settings first.");
+       return;
+    }
+    try {
+      await updateSettings.mutateAsync({
+        id: settings.id,
+        data: { current_bid_increment: incrementSize }
+      });
+      await createLog.mutateAsync({
+        type: "admin",
+        message: "Admin updated Global Bid Increment to ₹" + incrementSize + "L",
+      });
+      toast.success("Global Bid Increment set to ₹" + incrementSize + "L");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to update bid increment.");
+    }
   };
 
   const handleStatusChange = async (startupId, status, winningTeamId, amount) => {
     await updateStartup.mutateAsync({
       id: startupId,
-      data: { status, winning_team_id: winningTeamId }
+      data: { status, winning_team_id: winningTeamId, current_price: amount } // Ensure price is saved
     });
 
-    if (status === "sold" && winningTeamId && amount) {
+    if (status === "sold" && winningTeamId) {
       const team = teams.find(t => t.id === winningTeamId);
       await updateTeam.mutateAsync({
         id: winningTeamId,
@@ -198,55 +269,287 @@ export default function AdminDashboard() {
         startup_id: startupId,
         amount
       });
+      
+      // AUTO-ADVANCE LOGIC
+      // Find the next upcoming startup by order or creation
+      const nextStartup = [...startups]
+        .filter(s => s.status === "upcoming" && s.id !== startupId)
+        .sort((a, b) => {
+           const orderA = typeof a.order === 'number' ? a.order : 9999;
+           const orderB = typeof b.order === 'number' ? b.order : 9999;
+           if (orderA !== orderB) return orderA - orderB;
+           return new Date(a.created_date || 0).getTime() - new Date(b.created_date || 0).getTime();
+        })[0];
+
+      if (nextStartup) {
+         // Mark next startup as active
+         await updateStartup.mutateAsync({
+            id: nextStartup.id,
+            data: { status: "active", current_price: nextStartup.base_price }
+         });
+         
+         // Update settings
+         if (settings) {
+             await updateSettings.mutateAsync({
+                 id: settings.id,
+                 data: { active_startup_id: nextStartup.id, is_auction_active: true }
+             });
+         }
+         toast.success(`${startup?.name} sold. Moving to ${nextStartup.name}.`);
+      } else {
+         if (settings) {
+             await updateSettings.mutateAsync({
+                 id: settings.id,
+                 data: { active_startup_id: null, is_auction_active: false }
+             });
+         }
+         toast.success("Auction block complete. No more upcoming startups.");
+      }
+    } else if (status === "unsold") {
+       // Also auto-advance on unsold
+       const nextStartup = [...startups]
+        .filter(s => s.status === "upcoming" && s.id !== startupId)
+        .sort((a, b) => {
+           const orderA = typeof a.order === 'number' ? a.order : 9999;
+           const orderB = typeof b.order === 'number' ? b.order : 9999;
+           if (orderA !== orderB) return orderA - orderB;
+           return new Date(a.created_date || 0).getTime() - new Date(b.created_date || 0).getTime();
+        })[0];
+
+       if (nextStartup) {
+         await updateStartup.mutateAsync({
+            id: nextStartup.id,
+            data: { status: "active", current_price: nextStartup.base_price }
+         });
+         if (settings) {
+             await updateSettings.mutateAsync({
+                 id: settings.id,
+                 data: { active_startup_id: nextStartup.id, is_auction_active: true }
+             });
+         }
+         toast.info(`Marked unsold. Auto-advanced to ${nextStartup.name}.`);
+      } else {
+         if (settings) {
+             await updateSettings.mutateAsync({
+                 id: settings.id,
+                 data: { active_startup_id: null, is_auction_active: false }
+             });
+         }
+      }
     }
   };
 
-  const handleEditWallet = (team) => {
-    setWalletDialog({ open: true, team });
-    setWalletAmount(team.total_budget.toString());
+  const handleRevertSale = async () => {
+     // Find the most recently sold startup. 
+     // We can look at activity logs, or just the most recently updated "sold" startup
+     const sortedSoldStartups = [...startups]
+        .filter(s => s.status === "sold")
+        .sort((a, b) => new Date(b.updated_date || 0).getTime() - new Date(a.updated_date || 0).getTime());
+        
+     const lastSold = sortedSoldStartups[0];
+     
+     if (!lastSold) {
+        toast.error("No recent sales to revert.");
+        return;
+     }
+     
+     if (!window.confirm(`Are you sure you want to revert the sale of ${lastSold.name}?`)) return;
+
+     try {
+        // 1. Refund the team
+        if (lastSold.winning_team_id && lastSold.current_price) {
+           const team = teams.find(t => t.id === lastSold.winning_team_id);
+           if (team) {
+              await updateTeam.mutateAsync({
+                  id: team.id,
+                  data: { spent: Math.max(0, (team.spent || 0) - (lastSold.current_price || 0)) }
+              });
+           }
+        }
+        
+        // 2. Set the currently active one back to upcoming (if one exists)
+        if (activeStartup) {
+           await updateStartup.mutateAsync({
+              id: activeStartup.id,
+              data: { status: "upcoming" }
+           });
+        }
+        
+        // 3. Make the reverted startup active again
+        await updateStartup.mutateAsync({
+           id: lastSold.id,
+           data: { status: "active", winning_team_id: null }
+        });
+        
+        // 4. Update the settings to point at the reverted startup
+        if (settings) {
+           await updateSettings.mutateAsync({
+               id: settings.id,
+               data: { active_startup_id: lastSold.id, is_auction_active: true }
+           });
+        }
+
+        // 5. Optionally remove the sale log
+        const { data: saleLogs } = await supabase
+           .from('activity_logs')
+           .select('id')
+           .eq('type', 'sale')
+           .eq('startup_id', lastSold.id)
+           .limit(1);
+           
+        if (saleLogs && saleLogs.length > 0) {
+           await supabase.from('activity_logs').delete().eq('id', saleLogs[0].id);
+           queryClient.invalidateQueries({ queryKey: ["logs"] });
+        }
+        
+        await createLog.mutateAsync({
+           type: "admin",
+           message: `Admin reverted the sale of ${lastSold.name}`
+        });
+
+        toast.success(`Sale reverted. ${lastSold.name} is back on the block.`);
+     } catch (err) {
+        console.error("Revert failed:", err);
+        toast.error("Failed to revert sale.");
+     }
   };
 
-  const handleSaveWallet = async () => {
-    if (!walletDialog.team) return;
+  const handleEditTeam = (team) => {
+    setEditingTeamId(team.id);
+    setEditForm({
+        name: team.name || "",
+        leaderName: team.leader_name || "",
+        leaderEmail: team.leader_email || "",
+        budget: team.total_budget?.toString() || "",
+        logo: team.logo_url || ""
+    });
+    setEditTeamDialog(true);
+  };
+
+  const handleUpdateTeam = async () => {
+    if (!editingTeamId) return;
     
-    await updateTeam.mutateAsync({
-      id: walletDialog.team.id,
-      data: { total_budget: parseFloat(walletAmount) }
-    });
-
-    await createLog.mutateAsync({
-      type: "wallet",
-      message: `${walletDialog.team.name}'s budget updated to ₹${walletAmount}L`,
-      team_id: walletDialog.team.id,
-      amount: parseFloat(walletAmount)
-    });
-
-    setWalletDialog({ open: false, team: null });
+    try {
+        await updateTeam.mutateAsync({
+          id: editingTeamId,
+          data: { 
+              name: editForm.name,
+              total_budget: parseFloat(editForm.budget),
+              leader_name: editForm.leaderName,
+              leader_email: editForm.leaderEmail,
+              logo_url: editForm.logo
+          }
+        });
+    
+        await createLog.mutateAsync({
+          type: "wallet",
+          message: `Team "${editForm.name}" updated by Admin`,
+          team_id: editingTeamId,
+        });
+        
+        toast.success("Team updated successfully");
+        setEditTeamDialog(false);
+    } catch (err) {
+        console.error("Update failed", err);
+        toast.error("Failed to update team");
+    }
   };
 
   const handleTogglePowerCard = async (card) => {
-    const newStatus = card.status === "disabled" ? "available" : "disabled";
-    await updatePowerCard.mutateAsync({
-      id: card.id,
-      data: { status: newStatus }
-    });
+    // We use activity_logs with type='power_card' (allowed by the check constraint)
+    // The card_type is encoded in the message as "[CARD_USED:<card_type>] <card_name>"
+    
+    const messagePrefix = `[CARD_USED:${card.type}]`;
+    
+    try {
+        if (card.status === "used") {
+            // Mark as USED: Insert an activity log entry
+            const { data: existingLogs } = await supabase
+                .from('activity_logs')
+                .select('id')
+                .eq('type', 'power_card')
+                .eq('team_id', card.team_id)
+                .like('message', `${messagePrefix}%`);
 
-    await createLog.mutateAsync({
-      type: "power_card",
-      message: `Power card "${card.name}" ${newStatus === "disabled" ? "disabled" : "activated"}`,
-    });
+            if (!existingLogs || existingLogs.length === 0) {
+                const { error } = await supabase
+                    .from('activity_logs')
+                    .insert({
+                        type: "power_card",
+                        message: `${messagePrefix} ${card.name} activated for ${teams.find(t => t.id === card.team_id)?.name || "Unknown"}`,
+                        team_id: card.team_id
+                    });
+                if (error) throw error;
+
+                // Track powercard usage as an event for final judgement (ignore if table is not set up yet).
+                const { error: eventError } = await supabase
+                  .from("powercard_events")
+                  .insert({
+                    team_id: card.team_id,
+                    card_type: card.type,
+                    used_at: new Date().toISOString(),
+                    impact_weight: 3
+                  });
+                if (eventError && !String(eventError.message || "").includes("does not exist")) {
+                  console.warn("Failed to create powercard event", eventError);
+                }
+            }
+        } else {
+            // Mark as AVAILABLE (undo): Delete the matching log entry
+            // Find all matching entries and delete them to clean up duplicates
+            const { data: matchingLogs } = await supabase
+                .from('activity_logs')
+                .select('id')
+                .eq('type', 'power_card')
+                .eq('team_id', card.team_id)
+                .like('message', `${messagePrefix}%`);
+            
+            if (matchingLogs && matchingLogs.length > 0) {
+                const idsToDelete = matchingLogs.map(l => l.id);
+                const { error } = await supabase
+                    .from('activity_logs')
+                    .delete()
+                    .in('id', idsToDelete);
+                if (error) throw error;
+            }
+        }
+        
+        // Refresh power cards data
+        await queryClient.invalidateQueries({ queryKey: ["powerCardUsage"] });
+        queryClient.invalidateQueries({ queryKey: ["logs"] });
+        queryClient.invalidateQueries({ queryKey: ["powercard-events"] });
+
+        toast.success(`Power card "${card.name}" is now ${card.status}`);
+    } catch (error) {
+        console.error("Failed to toggle power card", error);
+        toast.error("Failed to update power card: " + (error?.message || "Unknown error"));
+    }
   };
 
   const handleAnnounceNews = async (data) => {
-    await createNews.mutateAsync({
+    const createdNews = await createNews.mutateAsync({
       ...data,
       status: "announced"
     });
+
+    // Track announced news as an event for final judgement (ignore if table is not set up yet).
+    const { error: newsEventError } = await supabase
+      .from("news_events")
+      .insert({
+        source_news_id: createdNews?.id || null,
+        title: createdNews?.title || data.title,
+        announced_at: new Date().toISOString(),
+        impact_weight: 3
+      });
+    if (newsEventError && !String(newsEventError.message || "").includes("does not exist")) {
+      console.warn("Failed to create news event", newsEventError);
+    }
 
     await createLog.mutateAsync({
       type: "news",
       message: `Breaking News: ${data.title}`,
     });
+    queryClient.invalidateQueries({ queryKey: ["news-events"] });
   };
 
   const handleResolveLog = async (logId) => {
@@ -257,38 +560,114 @@ export default function AdminDashboard() {
   };
 
   const handleCreateTeam = async () => {
-      if (!newTeam.name) return;
+      if (!newTeam.name || !newTeam.leaderName || !newTeam.leaderEmail) {
+          toast.error("Please fill in Name, Leader Name, and Leader Email");
+          return;
+      }
+
+      const emailValidation = validateEmailSyntax(newTeam.leaderEmail);
+      if (!emailValidation.valid) {
+        toast.error(emailValidation.reason);
+        return;
+      }
+
       setIsCreatingTeam(true);
       try {
-          const { error } = await supabase.from('teams').insert({
+          // 1. Create Team in DB
+          const teamDataToInsert = {
               name: newTeam.name,
               total_budget: parseFloat(newTeam.budget),
               logo_url: newTeam.logo,
-              spent: 0
-          });
+              leader_name: newTeam.leaderName,
+              leader_email: emailValidation.normalized,
+              participants: [{ name: newTeam.leaderName, role: "Leader" }],
+              spent: 0,
+              created_by: 'admin'
+          };
           
-          if (error) throw error;
+          const { data: teamRows, error: teamError } = await supabase
+            .from('teams')
+            .insert([teamDataToInsert])
+            .select();
           
+          if (teamError) throw teamError;
+          const createdTeam = teamRows[0];
+          
+          // 2. Create User Account for Leader (if not exists)
+          // We check existence loosely or just try insert and ignore unique constraint violation if needed, but better to check.
+          // For simplicity, we'll try to insert.
+           const { error: userError } = await supabase.from('users').insert([{
+               email: emailValidation.normalized,
+               role: 'user',
+               status: 'registered',
+               team_id: createdTeam.id
+          }]);
+          
+          if (userError) {
+              console.warn("User creation warning (might already exist):", userError.message);
+          }
+
           await refetchTeams();
           setAddTeamDialog(false);
-          setNewTeam({ name: "", budget: "500", logo: "" });
+          setNewTeam({ name: "", budget: "500", logo: "", leaderName: "", leaderEmail: "" });
+          
           // Log it
           await createLog.mutateAsync({
               type: "admin",
-              message: `New team "${newTeam.name}" added to the auction`,
+              message: `New team "${newTeam.name}" registered by Admin`,
           });
+          
+          toast.success(`Team "${newTeam.name}" created successfully`);
       } catch (error) {
           console.error("Error creating team:", error);
-          alert("Failed to create team. Check console for details.");
+          toast.error("Failed to create team: " + error.message);
       } finally {
           setIsCreatingTeam(false);
       }
   };
 
+  const handleAllotCards = (team) => {
+    setAllottingTeam(team);
+    setAllotCardsDialog(true);
+  };
+
   // Stats
   const pendingNews = news.filter(n => n.status !== "announced").length;
-  const usedCards = powerCards.filter(c => c.status === "used" || c.status === "active").length;
+  const usedCards = powerCardUsage.length;
   const soldStartups = startups.filter(s => s.status === "sold").length;
+  const totalAllotted = allottedCards.length;
+
+  const handleDeleteTeam = async (team) => {
+    if (!window.confirm(`Are you sure you want to delete team "${team.name}"? This will delete all their bids, users, and history.`)) {
+        return;
+    }
+
+    try {
+        const teamId = team.id;
+        
+        // Cascading Delete
+        await supabase.from('power_cards').delete().eq('team_id', teamId);
+        await supabase.from('bids').delete().eq('team_id', teamId);
+        await supabase.from('activity_logs').delete().eq('team_id', teamId);
+        await supabase.from('users').delete().eq('team_id', teamId);
+        
+        const { error } = await supabase.from('teams').delete().eq('id', teamId);
+        
+        if (error) throw error;
+        
+        await refetchTeams();
+        
+        await createLog.mutateAsync({
+            type: "admin",
+            message: `Team "${team.name}" deleted by Admin`,
+        });
+        
+        toast.success(`Team "${team.name}" deleted successfully`);
+    } catch (error) {
+        console.error("Delete failed:", error);
+        toast.error("Failed to delete team: " + error.message);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -322,7 +701,7 @@ export default function AdminDashboard() {
           />
           <StatCard 
             title="Power Cards Used" 
-            value={`${usedCards}/${powerCards.length}`} 
+            value={`${usedCards}/${totalAllotted}`} 
             icon={Zap} 
             color="purple" 
           />
@@ -348,11 +727,15 @@ export default function AdminDashboard() {
               activeStartup={activeStartup}
               teams={teams}
               highestBid={highestBid}
-              onBidSubmit={handleBidSubmit}
+              settings={settings}
+              onIncrementChange={handleIncrementChange}
               onStatusChange={handleStatusChange}
+              onRevertSale={handleRevertSale}
+              startups={startups}
             />
             <PowerCardsPanel
-              powerCards={powerCards}
+              powerCards={powerCardUsage}
+              allottedCards={allottedCards}
               teams={teams}
               onToggleCard={handleTogglePowerCard}
             />
@@ -363,8 +746,10 @@ export default function AdminDashboard() {
             <TeamsWalletTable
               teams={teams}
               startups={startups}
-              onEditWallet={handleEditWallet}
+              onEditWallet={handleEditTeam}
               onAddTeam={() => setAddTeamDialog(true)}
+              onDeleteTeam={handleDeleteTeam}
+              onAllotCards={handleAllotCards}
             />
             <BreakingNewsPanel
               news={news}
@@ -386,32 +771,66 @@ export default function AdminDashboard() {
         </div>
       </main>
 
-      {/* Wallet Edit Dialog */}
-      <Dialog open={walletDialog.open} onOpenChange={(open) => setWalletDialog({ ...walletDialog, open })}>
-        <DialogContent className="bg-[#0F1629] border-[#19388A]/50 text-white">
+      {/* Edit Team Dialog */}
+      <Dialog open={editTeamDialog} onOpenChange={setEditTeamDialog}>
+        <DialogContent aria-describedby={undefined} className="bg-[#0F1629] border-[#19388A]/50 text-white">
           <DialogHeader>
-            <DialogTitle>Edit {walletDialog.team?.name}'s Budget</DialogTitle>
+            <DialogTitle>Edit Team</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div>
-              <Label className="text-gray-400">Total Budget (in Lakhs)</Label>
+              <Label className="text-gray-400">Team Name</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-400">Leader Name</Label>
+                  <Input
+                    value={editForm.leaderName}
+                    onChange={(e) => setEditForm({ ...editForm, leaderName: e.target.value })}
+                    className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400">Leader Email</Label>
+                  <Input
+                    value={editForm.leaderEmail}
+                    onChange={(e) => setEditForm({ ...editForm, leaderEmail: e.target.value })}
+                    className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                  />
+                </div>
+            </div>
+            <div>
+              <Label className="text-gray-400">Total Budget (Lakhs)</Label>
               <Input
                 type="number"
-                value={walletAmount}
-                onChange={(e) => setWalletAmount(e.target.value)}
+                value={editForm.budget}
+                onChange={(e) => setEditForm({ ...editForm, budget: e.target.value })}
+                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+              />
+            </div>
+             <div>
+              <Label className="text-gray-400">Logo URL</Label>
+              <Input
+                value={editForm.logo}
+                onChange={(e) => setEditForm({ ...editForm, logo: e.target.value })}
                 className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
               />
             </div>
             <div className="flex justify-end gap-3">
               <Button
                 variant="outline"
-                onClick={() => setWalletDialog({ open: false, team: null })}
+                onClick={() => setEditTeamDialog(false)}
                 className="border-[#19388A]/50 text-gray-400 hover:text-white"
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleSaveWallet}
+                onClick={handleUpdateTeam}
                 className="bg-[#19388A] hover:bg-[#19388A]/80"
               >
                 Save Changes
@@ -423,20 +842,42 @@ export default function AdminDashboard() {
       
       {/* Add Team Dialog */}
       <Dialog open={addTeamDialog} onOpenChange={setAddTeamDialog}>
-        <DialogContent className="bg-[#0F1629] border-[#19388A]/50 text-white">
+        <DialogContent aria-describedby={undefined} className="bg-[#0F1629] border-[#19388A]/50 text-white">
           <DialogHeader>
             <DialogTitle>Add New Team</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div>
-              <Label className="text-gray-400">Team Name</Label>
+              <Label className="text-gray-400">Team Name *</Label>
               <Input
                 value={newTeam.name}
                 onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })}
-                placeholder="e.g. Alpha Ventures"
+                placeholder="e.g. Team Name"
                 className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
               />
             </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-400">Leader Name *</Label>
+                  <Input
+                    value={newTeam.leaderName}
+                    onChange={(e) => setNewTeam({ ...newTeam, leaderName: e.target.value })}
+                    placeholder="John Doe"
+                    className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400">Leader Email *</Label>
+                  <Input
+                    value={newTeam.leaderEmail}
+                    onChange={(e) => setNewTeam({ ...newTeam, leaderEmail: e.target.value })}
+                    placeholder="john@example.com"
+                    className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                  />
+                </div>
+            </div>
+
             <div>
               <Label className="text-gray-400">Total Budget (Lakhs)</Label>
               <Input
@@ -474,6 +915,16 @@ export default function AdminDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Allot Power Cards Dialog */}
+      <AllotPowerCardsDialog 
+        open={allotCardsDialog} 
+        onOpenChange={setAllotCardsDialog}
+        team={allottingTeam}
+        allottedCards={allottedCards}
+        powerCardUsage={powerCardUsage}
+        onSuccess={refetchAllottedCards}
+      />
     </div>
   );
 }

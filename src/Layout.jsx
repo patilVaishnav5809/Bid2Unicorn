@@ -14,11 +14,14 @@ import {
   X,
   ChevronRight,
   LogOut,
-  UserPlus
+  UserPlus,
+  Database
 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Layout({ children, currentPageName }) {
+  const { logout } = useAuth();
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const navItems = useMemo(() => [
@@ -29,14 +32,20 @@ export default function Layout({ children, currentPageName }) {
     { name: "Power Cards", icon: Zap, page: "PowerCards" },
     { name: "Breaking News", icon: Newspaper, page: "BreakingNews" },
     { name: "Leaderboard", icon: Trophy, page: "Leaderboard" },
+    { name: "Final Judgement", icon: Trophy, page: "FinalJudgement" },
+    { name: "Database", icon: Database, page: "DatabaseViewer" },
     { name: "Settings", icon: Settings, page: "AuctionSettings" },
   ], []);
 
   const inviteNavItem = useMemo(() => ({ 
-    name: "Invite Users", 
+    name: "Team Registration", 
     icon: UserPlus, 
-    page: "InviteUsers" 
+    page: "TeamRegistration" 
   }), []);
+
+  if (currentPageName === "Landing" || currentPageName === "Login" || currentPageName === "UserDashboard" || currentPageName === "ScreenDashboard") {
+      return <>{children}</>;
+  }
 
   return (
     <div className="min-h-screen bg-[#050814] text-white flex">
@@ -109,8 +118,8 @@ export default function Layout({ children, currentPageName }) {
                 key={item.page}
                 to={createPageUrl(item.page)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group
-                  ${isActive 
-                    ? 'bg-gradient-to-r from-[#19388A] to-[#19388A]/50 text-white glow-border' 
+                  ${isActive
+                    ? 'bg-gradient-to-r from-[#19388A] to-[#19388A]/50 text-white glow-border'
                     : 'text-gray-400 hover:text-white hover:bg-[#19388A]/20'
                   }`}
               >
@@ -156,7 +165,7 @@ export default function Layout({ children, currentPageName }) {
             {sidebarOpen && <span className="text-sm">Collapse</span>}
           </button>
           <button
-            onClick={() => base44.auth.logout()}
+            onClick={logout}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all"
           >
             <LogOut className="w-5 h-5" />

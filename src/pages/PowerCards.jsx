@@ -1,132 +1,182 @@
 import React, { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { 
-  Zap, Plus, Edit2, Trash2, Shield, Eye, Sparkles, 
-  Ban, Rocket, DollarSign, Search, Filter 
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabase";
+import { Zap, Search, Filter, Users, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import TopBar from "../components/admin/TopBar";
-
-const CARD_TYPES = [
-  { value: "right_to_match", label: "Right to Match", icon: Shield, color: "from-purple-500 to-purple-700" },
-  { value: "stealth_bid", label: "Stealth Bid", icon: Eye, color: "from-cyan-500 to-cyan-700" },
-  { value: "double_down", label: "Double Down", icon: Sparkles, color: "from-orange-500 to-orange-700" },
-  { value: "veto", label: "Veto", icon: Ban, color: "from-red-500 to-red-700" },
-  { value: "wildcard", label: "Wildcard", icon: Rocket, color: "from-lime-500 to-lime-700" },
-  { value: "budget_boost", label: "Budget Boost", icon: DollarSign, color: "from-yellow-500 to-yellow-700" }
-];
+import { POWER_CARDS_DATA } from "@/constants/powerCards";
+import { toast } from "sonner";
 
 const statusColors = {
   available: "bg-lime-500/20 text-lime-400 border-lime-500/30",
-  active: "bg-[#FF6B35]/20 text-[#FF6B35] border-[#FF6B35]/30",
-  used: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-  disabled: "bg-red-500/20 text-red-400 border-red-500/30"
+  used: "bg-[#FF6B35]/20 text-[#FF6B35] border-[#FF6B35]/30",
 };
 
 export default function PowerCards() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState("all");
+  const [filterTeam, setFilterTeam] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [dialog, setDialog] = useState({ open: false, card: null });
-  const [formData, setFormData] = useState({
-    name: "", type: "right_to_match", description: "", team_id: "", effect_value: 1
-  });
+  const [loadingCards, setLoadingCards] = useState({});
 
-  const { data: powerCards = [] } = useQuery({
-    queryKey: ["powerCards"],
-    queryFn: () => base44.entities.PowerCard.list(),
-  });
-
+  // Fetch teams
   const { data: teams = [] } = useQuery({
     queryKey: ["teams"],
-    queryFn: () => base44.entities.Team.list(),
+    queryFn: async () => {
+      const { data, error } = await supabase.from('teams').select('*').order('name');
+      if (!error && data) return data;
+      return base44.entities.Team.list();
+    },
   });
 
+  // Fetch power card usage from activity_logs
+  const { data: powerCardUsageLogs = [] } = useQuery({
+    queryKey: ["powerCardUsage"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('type', 'power_card')
+        .like('message', '[CARD_USED:%');
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Fetch allotted cards
+  const { data: allottedCards = [] } = useQuery({
+    queryKey: ["allottedCards"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('power_cards').select('*');
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 10000,
+  });
+
+  // Parse usage logs into a set of { team_id, card_type }
+  const usedEntries = [];
+  powerCardUsageLogs.forEach(log => {
+    const match = log.message?.match(/\[CARD_USED:([^\]]+)\]/);
+    if (match) {
+      const cardType = match[1];
+      if (!usedEntries.some(e => e.team_id === log.team_id && e.card_type === cardType)) {
+        usedEntries.push({ team_id: log.team_id, card_type: cardType });
+      }
+    }
+  });
+
+  const isCardUsed = (teamId, cardType) =>
+    usedEntries.some(e => e.team_id === teamId && e.card_type === cardType);
+
+  // Fetch settings for TopBar
   const { data: startups = [] } = useQuery({
     queryKey: ["startups"],
     queryFn: () => base44.entities.Startup.list(),
   });
-
   const { data: settingsArr = [] } = useQuery({
     queryKey: ["settings"],
     queryFn: () => base44.entities.AuctionSettings.list(),
   });
-
   const settings = settingsArr[0];
 
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, any>} */
-  const createCard = useMutation({
-    mutationFn: (data) => base44.entities.PowerCard.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["powerCards"] });
-      setDialog({ open: false, card: null });
-    },
+  // Build flat list of all cards across all teams
+  const allCards = teams.flatMap(team => {
+    // Only get cards allotted to this team
+    const teamAllotted = allottedCards.filter(a => a.team_id === team.id).map(a => a.type);
+    
+    return POWER_CARDS_DATA.filter(card => teamAllotted.includes(card.id)).map(card => {
+      const used = isCardUsed(team.id, card.id);
+      return {
+        key: `${team.id}-${card.id}`,
+        teamId: team.id,
+        teamName: team.name,
+        cardId: card.id,
+        cardName: card.name,
+        CardIcon: card.icon,
+        cardColor: card.color,
+        description: card.description,
+        used,
+        status: used ? "used" : "available",
+      };
+    })
   });
 
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
-  const updateCard = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.PowerCard.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["powerCards"] });
-      setDialog({ open: false, card: null });
-    },
-  });
-
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, string>} */
-  const deleteCard = useMutation({
-    mutationFn: (id) => base44.entities.PowerCard.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["powerCards"] }),
-  });
-
-  const handleOpenDialog = (card = null) => {
-    if (card) {
-      setFormData({
-        name: card.name,
-        type: card.type,
-        description: card.description || "",
-        team_id: card.team_id || "",
-        effect_value: card.effect_value || 1
-      });
-    } else {
-      setFormData({ name: "", type: "right_to_match", description: "", team_id: "", effect_value: 1 });
-    }
-    setDialog({ open: true, card });
-  };
-
-  const handleSave = async () => {
-    if (dialog.card) {
-      await updateCard.mutateAsync({ id: dialog.card.id, data: formData });
-    } else {
-      await createCard.mutateAsync({ ...formData, status: formData.team_id ? "available" : "available" });
-    }
-  };
-
-  const filteredCards = powerCards.filter(card => {
-    const matchesSearch = card.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = filterType === "all" || card.type === filterType;
+  // Apply filters
+  const filteredCards = allCards.filter(card => {
+    const matchesSearch =
+      card.cardName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      card.teamName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTeam = filterTeam === "all" || card.teamId === filterTeam;
     const matchesStatus = filterStatus === "all" || card.status === filterStatus;
-    return matchesSearch && matchesType && matchesStatus;
+    return matchesSearch && matchesTeam && matchesStatus;
   });
 
-  const getTeamName = (teamId) => teams.find(t => t.id === teamId)?.name || "Unassigned";
-  const getCardType = (type) => CARD_TYPES.find(t => t.value === type) || CARD_TYPES[0];
+  // Stats
+  const totalUsed = usedEntries.length;
+  const totalCards = allottedCards.length; // total allotted
+
+  const handleTogglePowerCard = async (card) => {
+    const messagePrefix = `[CARD_USED:${card.cardId}]`;
+    setLoadingCards(prev => ({ ...prev, [card.key]: true }));
+    
+    try {
+        if (card.status === "used") {
+            // Mark as USED: Insert an activity log entry
+            const { data: existingLogs } = await supabase
+                .from('activity_logs')
+                .select('id')
+                .eq('type', 'power_card')
+                .eq('team_id', card.teamId)
+                .like('message', `${messagePrefix}%`);
+
+            if (!existingLogs || existingLogs.length === 0) {
+                const { error } = await supabase
+                    .from('activity_logs')
+                    .insert({
+                        type: "power_card",
+                        message: `${messagePrefix} ${card.cardName} activated for ${card.teamName}`,
+                        team_id: card.teamId
+                    });
+                if (error) throw error;
+            }
+        } else {
+            // Mark as AVAILABLE: Delete the matching log entry
+            const { data: matchingLogs } = await supabase
+                .from('activity_logs')
+                .select('id')
+                .eq('type', 'power_card')
+                .eq('team_id', card.teamId)
+                .like('message', `${messagePrefix}%`);
+            
+            if (matchingLogs && matchingLogs.length > 0) {
+                const idsToDelete = matchingLogs.map(l => l.id);
+                const { error } = await supabase
+                    .from('activity_logs')
+                    .delete()
+                    .in('id', idsToDelete);
+                if (error) throw error;
+            }
+        }
+        
+        await queryClient.invalidateQueries({ queryKey: ["powerCardUsage"] });
+        queryClient.invalidateQueries({ queryKey: ["logs"] });
+        toast.success(`Power card "${card.cardName}" is now ${card.status}`);
+    } catch (error) {
+        console.error("Failed to toggle power card", error);
+        toast.error("Failed to update power card: " + (error?.message || "Unknown error"));
+    } finally {
+        setLoadingCards(prev => ({ ...prev, [card.key]: false }));
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <TopBar 
+      <TopBar
         settings={settings}
         activeStartup={startups.find(s => s.status === "active")}
         teamsOnline={teams.filter(t => t.is_online).length}
@@ -139,17 +189,24 @@ export default function PowerCards() {
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Zap className="w-6 h-6 text-[#FF6B35]" />
-              Power Cards Management
+              Power Cards Overview
             </h1>
-            <p className="text-sm text-gray-500 mt-1">{powerCards.length} power cards configured</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {totalUsed} / {totalCards} cards used across {teams.length} teams
+            </p>
           </div>
-          <Button
-            onClick={() => handleOpenDialog()}
-            className="bg-[#FF6B35] hover:bg-[#FF6B35]/80"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Power Card
-          </Button>
+          <div className="flex gap-3">
+            <div className="bg-[#0F1629] rounded-lg border border-[#19388A]/30 px-4 py-2 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#FF6B35]" />
+              <span className="text-sm text-gray-400">Used:</span>
+              <span className="text-white font-bold">{totalUsed}</span>
+            </div>
+            <div className="bg-[#0F1629] rounded-lg border border-[#19388A]/30 px-4 py-2 flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#4F91CD]" />
+              <span className="text-sm text-gray-400">Teams:</span>
+              <span className="text-white font-bold">{teams.length}</span>
+            </div>
+          </div>
         </div>
 
         {/* Filters */}
@@ -157,21 +214,21 @@ export default function PowerCards() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
             <Input
-              placeholder="Search cards..."
+              placeholder="Search cards or teams..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 bg-[#0F1629] border-[#19388A]/50 text-white"
             />
           </div>
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-40 bg-[#0F1629] border-[#19388A]/50 text-white">
+          <Select value={filterTeam} onValueChange={setFilterTeam}>
+            <SelectTrigger className="w-48 bg-[#0F1629] border-[#19388A]/50 text-white">
               <Filter className="w-4 h-4 mr-2 text-gray-500" />
-              <SelectValue placeholder="Type" />
+              <SelectValue placeholder="Team" />
             </SelectTrigger>
             <SelectContent className="bg-[#0F1629] border-[#19388A]/50">
-              <SelectItem value="all" className="text-white">All Types</SelectItem>
-              {CARD_TYPES.map(t => (
-                <SelectItem key={t.value} value={t.value} className="text-white">{t.label}</SelectItem>
+              <SelectItem value="all" className="text-white">All Teams</SelectItem>
+              {teams.map(t => (
+                <SelectItem key={t.id} value={t.id} className="text-white">{t.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -183,157 +240,114 @@ export default function PowerCards() {
             <SelectContent className="bg-[#0F1629] border-[#19388A]/50">
               <SelectItem value="all" className="text-white">All Status</SelectItem>
               <SelectItem value="available" className="text-white">Available</SelectItem>
-              <SelectItem value="active" className="text-white">Active</SelectItem>
               <SelectItem value="used" className="text-white">Used</SelectItem>
-              <SelectItem value="disabled" className="text-white">Disabled</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredCards.map((card) => {
-            const cardType = getCardType(card.type);
-            const IconComponent = cardType.icon;
-            
-            return (
-              <div 
-                key={card.id}
-                className={`bg-[#0F1629] rounded-xl border ${card.status === "active" ? 'border-[#FF6B35]/50 shadow-[0_0_30px_rgba(255,107,53,0.2)]' : 'border-[#19388A]/30'} overflow-hidden hover:border-[#4F91CD]/50 transition-all`}
-              >
-                {/* Card Header */}
-                <div className={`h-20 bg-gradient-to-br ${cardType.color} flex items-center justify-center relative`}>
-                  <IconComponent className="w-10 h-10 text-white/80" />
-                  <Badge className={`absolute top-3 right-3 ${statusColors[card.status]} border text-[10px]`}>
-                    {card.status}
-                  </Badge>
-                </div>
+        {/* Team-grouped view */}
+        {filterTeam === "all" ? (
+          // Show grouped by team
+          <div className="space-y-6">
+            {teams.map(team => {
+              const teamCards = filteredCards.filter(c => c.teamId === team.id);
+              if (teamCards.length === 0) return null;
+              const teamUsed = usedEntries.filter(e => e.team_id === team.id).length;
 
-                {/* Content */}
-                <div className="p-4">
-                  <h3 className="font-bold text-white">{card.name}</h3>
-                  <p className="text-xs text-[#4F91CD] capitalize">{card.type.replace(/_/g, " ")}</p>
-                  <p className="text-xs text-gray-500 mt-2 line-clamp-2">{card.description}</p>
-
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Assigned to</span>
-                      <span className="text-white font-medium">{getTeamName(card.team_id)}</span>
+              return (
+                <div key={team.id} className="bg-[#0F1629] rounded-xl border border-[#19388A]/30 overflow-hidden">
+                  {/* Team Header */}
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-[#19388A]/20">
+                    <div className="flex items-center gap-3">
+                      {team.logo_url ? (
+                        <img src={team.logo_url} alt={team.name} className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-[#19388A]/40 flex items-center justify-center text-white font-bold text-sm">
+                          {team.name?.charAt(0)}
+                        </div>
+                      )}
+                      <h2 className="text-lg font-bold text-white">{team.name}</h2>
                     </div>
-                    {card.effect_value && card.effect_value !== 1 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Effect</span>
-                        <span className="text-[#FF6B35] font-medium">{card.effect_value}x</span>
-                      </div>
-                    )}
+                    <span className="text-sm font-semibold text-[#FF6B35]">
+                      {teamUsed} Used
+                    </span>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2 mt-4">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleOpenDialog(card)}
-                      className="flex-1 text-[#4F91CD] hover:text-white hover:bg-[#19388A]/30"
-                    >
-                      <Edit2 className="w-4 h-4 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => deleteCard.mutate(card.id)}
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                  {/* Cards Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 p-4">
+                    {teamCards.map(card => {
+                      const CardIcon = card.CardIcon;
+                      return (
+                      <button
+                        key={card.key}
+                        disabled={loadingCards[card.key]}
+                        onClick={() => handleTogglePowerCard({ ...card, status: card.used ? 'available' : 'used' })}
+                        className={`relative rounded-lg border p-3 text-center transition-all ${
+                          card.used
+                            ? 'bg-[#FF6B35]/10 border-[#FF6B35]/50 shadow-[0_0_15px_rgba(255,107,53,0.15)] focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/50'
+                            : 'bg-[#0B1020] border-[#19388A]/30 hover:border-[#4F91CD]/50 focus:outline-none focus:ring-2 focus:ring-[#4F91CD]/50'
+                        } ${loadingCards[card.key] ? 'opacity-50 cursor-wait' : 'cursor-pointer hover:scale-105'}`}
+                      >
+                        <CardIcon className={`w-6 h-6 mx-auto ${card.used ? 'text-[#FF6B35]' : 'text-gray-400'}`} />
+                        <p className="text-xs font-semibold text-white truncate">{card.cardName}</p>
+                        <Badge className={`mt-2 text-[9px] px-1.5 py-0 ${statusColors[card.status]} border`}>
+                          {card.status}
+                        </Badge>
+                      </button>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </main>
-
-      {/* Add/Edit Dialog */}
-      <Dialog open={dialog.open} onOpenChange={(open) => setDialog({ ...dialog, open })}>
-        <DialogContent className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>{dialog.card ? "Edit Power Card" : "Add New Power Card"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div>
-              <Label className="text-gray-400">Card Name</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
-              />
-            </div>
-            <div>
-              <Label className="text-gray-400">Card Type</Label>
-              <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                <SelectTrigger className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-[#0F1629] border-[#19388A]/50">
-                  {CARD_TYPES.map(t => (
-                    <SelectItem key={t.value} value={t.value} className="text-white">{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-gray-400">Description</Label>
-              <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white h-20"
-              />
-            </div>
-            <div>
-              <Label className="text-gray-400">Assign to Team (optional)</Label>
-              <Select value={formData.team_id} onValueChange={(v) => setFormData({ ...formData, team_id: v })}>
-                <SelectTrigger className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white">
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent className="bg-[#0F1629] border-[#19388A]/50">
-                  <SelectItem value={null} className="text-white">Unassigned</SelectItem>
-                  {teams.map(t => (
-                    <SelectItem key={t.id} value={t.id} className="text-white">{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-gray-400">Effect Value (multiplier)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={formData.effect_value}
-                onChange={(e) => setFormData({ ...formData, effect_value: parseFloat(e.target.value) })}
-                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setDialog({ open: false, card: null })}
-                className="border-[#19388A]/50 text-gray-400 hover:text-white"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={!formData.name}
-                className="bg-[#FF6B35] hover:bg-[#FF6B35]/80"
-              >
-                {dialog.card ? "Save Changes" : "Add Card"}
-              </Button>
-            </div>
+              );
+            })}
           </div>
-        </DialogContent>
-      </Dialog>
+        ) : (
+          // Show flat grid for single team
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {filteredCards.map(card => {
+              const CardIcon = card.CardIcon;
+              return (
+              <button
+                key={card.key}
+                disabled={loadingCards[card.key]}
+                onClick={() => handleTogglePowerCard({ ...card, status: card.used ? 'available' : 'used' })}
+                className={`bg-[#0F1629] rounded-xl border overflow-hidden transition-all text-left w-full ${
+                  card.used
+                    ? 'border-[#FF6B35]/50 shadow-[0_0_30px_rgba(255,107,53,0.2)] focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/50'
+                    : 'border-[#19388A]/30 hover:border-[#4F91CD]/50 focus:outline-none focus:ring-2 focus:ring-[#4F91CD]/50'
+                } ${loadingCards[card.key] ? 'opacity-50 cursor-wait' : 'cursor-pointer hover:scale-[1.02]'}`}
+              >
+                <div className={`h-16 flex items-center justify-center ${
+                  card.used ? 'bg-[#FF6B35]/20' : 'bg-[#0B1020]'
+                }`}>
+                  <CardIcon className={`w-8 h-8 ${card.used ? 'text-[#FF6B35]' : 'text-gray-400'}`} />
+                </div>
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-bold text-white text-sm">{card.cardName}</h3>
+                    <Badge className={`${statusColors[card.status]} border text-[10px]`}>
+                      {card.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">{card.description}</p>
+                  <div className="flex justify-between text-xs mt-3">
+                    <span className="text-gray-500">Team</span>
+                    <span className="text-[#4F91CD] font-medium">{card.teamName}</span>
+                  </div>
+                </div>
+              </button>
+              );
+            })}
+          </div>
+        )}
+
+        {filteredCards.length === 0 && (
+          <div className="text-center py-20 text-gray-500">
+            <Zap className="w-12 h-12 mx-auto mb-4 opacity-30" />
+            <p className="text-lg">No power cards match your filters</p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

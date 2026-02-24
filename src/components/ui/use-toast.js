@@ -1,5 +1,4 @@
-
-import * as React from "react"
+import { useState, useEffect } from "react"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
@@ -21,7 +20,7 @@ const actionTypes = {
 let memoryState = { toasts: [] }
 let listeners = []
 
-const reducer = (state,ac) => {
+const reducer = (state, ac) => {
   switch (ac.type) {
     case actionTypes.ADD_TOAST:
       return {
@@ -77,6 +76,7 @@ const reducer = (state,ac) => {
 }
 
 function dispatch(action) {
+  console.log("Dispatching Toast Action:", action.type);
   memoryState = reducer(memoryState, action)
   listeners.forEach((listener) => {
     listener(memoryState)
@@ -113,9 +113,9 @@ const toast = ({ ...props }) => {
 }
 
 function useToast() {
-  const [state, setState] = React.useState(memoryState)
+  const [state, setState] = useState(memoryState)
 
-  React.useEffect(() => {
+  useEffect(() => {
     listeners.push(setState)
     return () => {
       const index = listeners.indexOf(setState)

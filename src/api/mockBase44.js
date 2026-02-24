@@ -6,7 +6,7 @@ const EVENTS = new EventTarget();
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 // Mock Data
-const SEED_DATA = {
+export const SEED_DATA = {
   Startup: [
     {
       id: 's1',
@@ -57,41 +57,7 @@ const SEED_DATA = {
       created_date: new Date().toISOString()
     }
   ],
-  Team: [
-    {
-      id: 't1',
-      name: 'Alpha Ventures',
-      logo_url: '',
-      total_budget: 500,
-      spent: 0,
-      is_online: true,
-      members: ['user@example.com'],
-      created_by: 'user@example.com',
-      created_date: new Date().toISOString()
-    },
-    {
-      id: 't2',
-      name: 'Beta Capital',
-      logo_url: '',
-      total_budget: 500,
-      spent: 0,
-      is_online: true,
-      members: ['beta@example.com'],
-      created_by: 'beta@example.com',
-      created_date: new Date().toISOString()
-    },
-    {
-      id: 't3',
-      name: 'Gamma Partners',
-      logo_url: '',
-      total_budget: 500,
-      spent: 0,
-      is_online: true,
-      members: ['gamma@example.com'],
-      created_by: 'gamma@example.com',
-      created_date: new Date().toISOString()
-    }
-  ],
+  Team: [],
   AuctionSettings: [
     {
       id: 'settings',
@@ -237,10 +203,38 @@ class MockEntityClient {
 }
 
 class MockUsersClient {
+  constructor(base44) {
+    this.base44 = base44;
+  }
+
   async inviteUser(email, role) {
-    // Mock implementation
-    console.log(`Invited user ${email} as ${role}`);
-    return { success: true, message: `Invited ${email}` };
+    // Persist user to the mock database
+    try {
+      // Check if user already exists
+      const existingUsers = await this.base44.entities.User.list();
+      const exists = existingUsers.find(u => u.email === email);
+      
+      if (exists) {
+        // Update role if exists
+        await this.base44.entities.User.update(exists.id, { role, updated_date: new Date().toISOString() });
+        console.log(`Updated user ${email} role to ${role}`);
+        return { success: true, message: `Updated user ${email}` };
+      }
+
+      // Create new user
+      await this.base44.entities.User.create({
+        email,
+        role,
+        status: 'invited',
+        invited_date: new Date().toISOString()
+      });
+      console.log(`Invited user ${email} as ${role}`);
+      return { success: true, message: `Invited ${email}` };
+    } catch (error) {
+       console.error("Mock invite error:", error);
+       // Fallback for demo purposes
+       return { success: true, message: `Invited ${email} (Mock)` };
+    }
   }
 }
 
@@ -256,7 +250,15 @@ class MockAuthClient {
     return JSON.parse(userJson);
   }
 
-  async login(email, role = 'user') {
+  async login(email, role = 'user', password) {
+    if (role === 'admin') {
+      return {
+        id: 'admin_123',
+        name: 'Admin User',
+        email: email,
+        role: 'admin'
+      };
+    }
     const user = {
       id: 'u1',
       email: email,
@@ -273,6 +275,11 @@ class MockAuthClient {
       if (typeof window !== 'undefined') {
         localStorage.removeItem(this.userKey);
       }
+  }
+
+  async resendConfirmation(email) {
+      console.log(`[MockAuth] Resending confirmation to ${email}`);
+      return { error: null };
   }
   
   redirectToLogin() {
@@ -310,7 +317,7 @@ class MockAppLogsClient {
 class MockBase44Client {
   constructor() {
     this.auth = new MockAuthClient();
-    this.users = new MockUsersClient();
+    this.users = new MockUsersClient(this);
     this.appLogs = new MockAppLogsClient(this);
     /** @type {any} */
     this.entities = new Proxy({}, {

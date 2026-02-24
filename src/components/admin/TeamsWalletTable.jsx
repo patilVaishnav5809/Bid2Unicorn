@@ -1,9 +1,9 @@
 import React from "react";
-import { Wallet, Briefcase, Edit2, Plus } from "lucide-react";
+import { Wallet, Briefcase, Edit2, Plus, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
-export default function TeamsWalletTable({ teams, startups, onEditWallet, onAddTeam }) {
+export default function TeamsWalletTable({ teams, startups, onEditWallet, onAddTeam, onDeleteTeam, onAllotCards }) {
   const getPortfolioCount = (teamId) => {
     return startups.filter(s => s.winning_team_id === teamId).length;
   };
@@ -48,7 +48,7 @@ export default function TeamsWalletTable({ teams, startups, onEditWallet, onAddT
             </tr>
           </thead>
           <tbody>
-            {teams.map((team, index) => (
+            {teams.map((team) => (
               <tr 
                 key={team.id} 
                 className="border-b border-[#19388A]/20 hover:bg-[#19388A]/10 transition-colors"
@@ -65,8 +65,8 @@ export default function TeamsWalletTable({ teams, startups, onEditWallet, onAddT
                     <div>
                       <p className="font-medium text-white">{team.name}</p>
                       <div className="flex items-center gap-1">
-                        <span className={`w-2 h-2 rounded-full ${team.is_online ? 'bg-lime-400' : 'bg-gray-500'}`} />
-                        <span className="text-xs text-gray-500">{team.is_online ? 'Online' : 'Offline'}</span>
+                        <span className={`w-2 h-2 rounded-full ${team.status === 'active' ? 'bg-lime-400' : 'bg-gray-500'}`} />
+                        <span className="text-xs text-gray-500 capitalize">{team.status || 'inactive'}</span>
                       </div>
                     </div>
                   </div>
@@ -90,14 +90,35 @@ export default function TeamsWalletTable({ teams, startups, onEditWallet, onAddT
                     <span className="font-semibold text-white">{getPortfolioCount(team.id)}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="px-4 py-3 text-center min-w-[120px]">
+                  {onAllotCards && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title="Allot Power Cards"
+                      onClick={() => onAllotCards(team)}
+                      className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+                    >
+                      <Zap className="w-4 h-4 fill-current" />
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
+                    title="Edit Team"
                     onClick={() => onEditWallet(team)}
-                    className="text-[#4F91CD] hover:text-white hover:bg-[#19388A]/30"
+                    className="text-[#4F91CD] hover:text-white hover:bg-[#19388A]/30 ml-1"
                   >
                     <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="Delete Team"
+                    onClick={() => onDeleteTeam(team)}
+                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10 ml-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </Button>
                 </td>
               </tr>

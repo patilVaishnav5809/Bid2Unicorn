@@ -6,15 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function TopBar({ settings, activeStartup, teamsOnline, totalBids }) {
   const [timeLeft, setTimeLeft] = useState(0);
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
-  }, []);
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     if (!settings?.timer_end_time) return;
@@ -116,7 +112,7 @@ export default function TopBar({ settings, activeStartup, teamsOnline, totalBids
             </DropdownMenuItem>
             <DropdownMenuItem 
               className="text-red-400 hover:text-red-300 focus:text-red-300 focus:bg-red-500/10"
-              onClick={() => base44.auth.logout()}
+              onClick={logout}
             >
               Logout
             </DropdownMenuItem>

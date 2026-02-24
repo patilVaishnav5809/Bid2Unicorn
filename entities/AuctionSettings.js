@@ -23,6 +23,10 @@ export default {
     },
     "active_startup_id": {
       "type": "string"
+    },
+    "current_bid_increment": {
+      "type": "number",
+      "default": 1
     }
   },
   "required": []

@@ -1,99 +1,139 @@
-import React from "react";
-import { Zap, Shield, Eye, Sparkles, Ban, Rocket, DollarSign, ToggleLeft, ToggleRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import React, { useState } from "react";
+import { Zap, ChevronDown } from "lucide-react";
+import { POWER_CARDS_DATA } from "@/constants/powerCards";
 
-const cardIcons = {
-  right_to_match: Shield,
-  stealth_bid: Eye,
-  double_down: Sparkles,
-  veto: Ban,
-  wildcard: Rocket,
-  budget_boost: DollarSign
-};
+export default function PowerCardsPanel({ powerCards, allottedCards = [], teams, onToggleCard }) {
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [loadingCards, setLoadingCards] = useState({});
 
-const cardColors = {
-  right_to_match: "from-purple-500 to-purple-700",
-  stealth_bid: "from-cyan-500 to-cyan-700",
-  double_down: "from-orange-500 to-orange-700",
-  veto: "from-red-500 to-red-700",
-  wildcard: "from-lime-500 to-lime-700",
-  budget_boost: "from-yellow-500 to-yellow-700"
-};
+  // Auto-select first team if none selected
+  const activeTeamId = selectedTeamId || teams[0]?.id;
+  const activeTeam = teams.find(t => t.id === activeTeamId);
 
-export default function PowerCardsPanel({ powerCards, teams, onToggleCard }) {
-  const getTeamName = (teamId) => {
-    return teams.find(t => t.id === teamId)?.name || "Unassigned";
+  // Filter out which cards are allotted to this team
+  const teamAllottedCards = POWER_CARDS_DATA.filter(card => 
+    allottedCards.some(a => a.team_id === activeTeamId && a.type === card.id)
+  );
+
+  const getCardStatus = (teamId, cardType) => {
+    const card = powerCards.find(c => c.team_id === teamId && c.type === cardType);
+    return card ? card.status : "available";
   };
 
-  const getStatusBadge = (status) => {
-    const styles = {
-      available: "bg-lime-500/20 text-lime-400 border-lime-500/30",
-      active: "bg-[#FF6B35]/20 text-[#FF6B35] border-[#FF6B35]/30 animate-pulse",
-      used: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-      disabled: "bg-red-500/20 text-red-400 border-red-500/30"
-    };
-    return styles[status] || styles.available;
+  const getCardId = (teamId, cardType) => {
+    const card = powerCards.find(c => c.team_id === teamId && c.type === cardType);
+    return card ? card.id : null;
   };
+
+  const getUsedCount = (teamId) => {
+    return powerCards.filter(c => c.team_id === teamId && c.status === "used").length;
+  };
+
+  const usedCount = activeTeamId ? getUsedCount(activeTeamId) : 0;
 
   return (
-    <div className="bg-[#0F1629] rounded-xl border border-[#19388A]/30 overflow-hidden">
-      <div className="p-4 border-b border-[#19388A]/30">
+    <div className="bg-[#0F1629] rounded-xl border border-[#19388A]/30 overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="p-4 border-b border-[#19388A]/30 flex justify-between items-center">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Zap className="w-5 h-5 text-[#FF6B35]" />
           Power Cards
         </h3>
+        <span className="text-xs text-gray-500">Allotted Cards</span>
       </div>
 
-      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto">
-        {powerCards.map((card) => {
-          const IconComponent = cardIcons[card.type] || Zap;
-          const gradient = cardColors[card.type] || "from-blue-500 to-blue-700";
-          
-          return (
-            <div 
-              key={card.id}
-              className="bg-[#0B1020] rounded-lg border border-[#19388A]/30 p-3 hover:border-[#4F91CD]/50 transition-all"
-            >
-              <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                  <IconComponent className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-white text-sm truncate">{card.name}</h4>
-                    <Badge className={`text-[10px] px-1.5 py-0 border ${getStatusBadge(card.status)}`}>
-                      {card.status}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {card.team_id ? getTeamName(card.team_id) : "Not Assigned"}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onToggleCard(card)}
-                  disabled={card.status === "used"}
-                  className="text-gray-400 hover:text-white"
+      {/* Team Selector Dropdown */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="relative">
+          <select
+            value={activeTeamId || ""}
+            onChange={(e) => setSelectedTeamId(e.target.value)}
+            className="w-full appearance-none bg-[#0B1020] border border-[#19388A]/40 rounded-lg px-4 py-2.5 pr-10 text-white text-sm font-semibold cursor-pointer focus:outline-none focus:border-[#4F91CD] transition-colors hover:border-[#4F91CD]/60"
+          >
+            {teams.map((team) => {
+              const count = getUsedCount(team.id);
+              return (
+                <option key={team.id} value={team.id}>
+                  {team.name} — {count} used
+                </option>
+              );
+            })}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
+      </div>
+
+      {/* Usage counter */}
+      {activeTeam && (
+        <div className="px-4 pb-2 flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            {activeTeam.name}
+          </span>
+          <span className={`text-xs font-bold text-[#FF6B35]`}>
+            {usedCount} Used
+          </span>
+        </div>
+      )}
+
+      {/* Cards Grid */}
+      {activeTeamId && (
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-3 gap-2">
+            {teamAllottedCards.map((cardDef) => {
+              const status = getCardStatus(activeTeamId, cardDef.id);
+              const dbId = getCardId(activeTeamId, cardDef.id);
+              const Icon = cardDef.icon;
+              const isUsed = status === "used";
+
+              return (
+                <button
+                  key={cardDef.id}
+                  title={`${cardDef.name}: ${cardDef.description}`}
+                  onClick={async () => {
+                    setLoadingCards(prev => ({ ...prev, [cardDef.id]: true }));
+                    try {
+                      await onToggleCard({
+                        id: dbId,
+                        type: cardDef.id,
+                        team_id: activeTeamId,
+                        status: isUsed ? "available" : "used",
+                        name: cardDef.name
+                      });
+                    } finally {
+                      setLoadingCards(prev => ({ ...prev, [cardDef.id]: false }));
+                    }
+                  }}
+                  disabled={loadingCards[cardDef.id]}
+                  className={`
+                    relative flex flex-col items-center justify-center p-2.5 rounded-lg border transition-all
+                    ${isUsed
+                      ? "bg-[#FF6B35]/20 border-[#FF6B35] shadow-[0_0_10px_rgba(255,107,53,0.3)]"
+                      : "bg-[#19388A]/10 border-[#19388A]/30 hover:bg-[#19388A]/30 hover:border-[#4F91CD]"
+                    }
+                  `}
                 >
-                  {card.status === "disabled" ? (
-                    <ToggleLeft className="w-5 h-5" />
-                  ) : (
-                    <ToggleRight className="w-5 h-5 text-lime-400" />
-                  )}
-                </Button>
+                  <Icon className={`w-5 h-5 mb-1 ${isUsed ? "text-[#FF6B35]" : cardDef.color}`} />
+                  <span className={`text-[10px] text-center leading-tight ${isUsed ? "text-white font-bold" : "text-gray-400"}`}>
+                    {cardDef.name.split(" ")[0]}
+                  </span>
+                </button>
+              );
+            })}
+            
+            {teamAllottedCards.length === 0 && (
+              <div className="col-span-3 text-center py-6 text-gray-500 text-sm border border-dashed border-[#19388A]/30 rounded-lg">
+                No cards allotted to this team yet. Use the Wallet table to allot cards.
               </div>
-            </div>
-          );
-        })}
-
-        {powerCards.length === 0 && (
-          <div className="col-span-2 py-8 text-center text-gray-500">
-            No power cards configured yet.
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {teams.length === 0 && (
+        <div className="p-4 text-center text-gray-500 text-sm">
+          No teams registered yet
+        </div>
+      )}
     </div>
   );
 }

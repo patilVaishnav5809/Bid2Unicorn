@@ -104,11 +104,46 @@ export default function BreakingNews() {
     }
   };
 
+  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
+  const updateStartupPrice = useMutation({
+      mutationFn: ({ id, data }) => base44.entities.Startup.update(id, data),
+  });
+
   const handleAnnounce = async (newsItem) => {
+    // 1. Announce the news
     await updateNews.mutateAsync({
       id: newsItem.id,
       data: { status: "announced" }
     });
+
+    // 2. Apply Multiplier impact to affected startups
+    if (newsItem.multiplier && newsItem.multiplier !== 1 && newsItem.affected_domains?.length > 0) {
+        // Filter target startups
+        const targets = startups.filter(s => 
+            newsItem.affected_domains.includes(s.domain)
+        );
+        
+        if (targets.length > 0) {
+            const updates = targets.map(s => {
+                const currentVal = s.current_price || s.base_price || 10;
+                const newPrice = Math.max(1, Math.floor(currentVal * newsItem.multiplier));
+                const newBase = Math.max(1, Math.floor((s.base_price || 10) * newsItem.multiplier));
+                
+                return updateStartupPrice.mutateAsync({
+                    id: s.id,
+                    data: { 
+                        current_price: newPrice,
+                        base_price: newBase
+                    }
+                });
+            });
+
+            await Promise.all(updates);
+            
+            // Force refresh of startups to show new prices immediately
+            queryClient.invalidateQueries({ queryKey: ["startups"] });
+        }
+    }
   };
 
   const toggleDomain = (domain) => {
@@ -272,7 +307,7 @@ export default function BreakingNews() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialog.open} onOpenChange={(open) => setDialog({ ...dialog, open })}>
-        <DialogContent className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-lg">
+        <DialogContent aria-describedby={undefined} className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-lg">
           <DialogHeader>
             <DialogTitle>{dialog.news ? "Edit News" : "Create Breaking News"}</DialogTitle>
           </DialogHeader>

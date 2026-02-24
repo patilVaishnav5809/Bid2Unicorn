@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import { Users, Plus, Edit2, Trash2, Wallet, Briefcase, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ImageUpload from "@/components/ui/ImageUpload";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -19,7 +22,7 @@ export default function Teams() {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState({ open: false, team: null });
   const [formData, setFormData] = useState({
-    name: "", total_budget: 100, logo_url: "", members: []
+    name: "", total_budget: 500, logo_url: "", members: [], leaderName: "", leaderEmail: ""
   });
   const [newMember, setNewMember] = useState("");
 
@@ -40,15 +43,6 @@ export default function Teams() {
 
   const settings = settingsArr[0];
 
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, any>} */
-  const createTeam = useMutation({
-    mutationFn: (data) => base44.entities.Team.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
-      setDialog({ open: false, team: null });
-    },
-  });
-
   /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, { id: string, data: any }>} */
   const updateTeam = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Team.update(id, data),
@@ -58,11 +52,34 @@ export default function Teams() {
     },
   });
 
-  /** @type {import('@tanstack/react-query').UseMutationResult<any, Error, string>} */
-  const deleteTeam = useMutation({
-    mutationFn: (id) => base44.entities.Team.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams"] }),
-  });
+  /* Removed deleteTeam mutation to use manual cascading delete */
+
+  const handleDeleteTeam = async (team) => {
+    if (!window.confirm(`Are you sure you want to delete team "${team.name}"? This will delete all their bids, users, and history.`)) {
+        return;
+    }
+
+    try {
+        const teamId = team.id;
+        
+        // Cascading Delete logic (same as AdminDashboard)
+        await supabase.from('power_cards').delete().eq('team_id', teamId);
+        await supabase.from('bids').delete().eq('team_id', teamId);
+        await supabase.from('activity_logs').delete().eq('team_id', teamId);
+        await supabase.from('users').delete().eq('team_id', teamId);
+        
+        const { error } = await supabase.from('teams').delete().eq('id', teamId);
+        
+        if (error) throw error;
+        
+        queryClient.invalidateQueries({ queryKey: ["teams"] });
+        
+        toast.success(`Team "${team.name}" deleted successfully`);
+    } catch (error) {
+        console.error("Delete failed:", error);
+        toast.error("Failed to delete team: " + error.message);
+    }
+  };
 
   const handleOpenDialog = (team = null) => {
     if (team) {
@@ -70,19 +87,103 @@ export default function Teams() {
         name: team.name,
         total_budget: team.total_budget,
         logo_url: team.logo_url || "",
-        members: team.members || []
+        members: team.members || [],
+        leaderName: team.leader_name || "",
+        leaderEmail: team.leader_email || ""
       });
     } else {
-      setFormData({ name: "", total_budget: 100, logo_url: "", members: [] });
+      setFormData({ 
+        name: "", 
+        total_budget: 500, 
+        logo_url: "", 
+        members: [], 
+        leaderName: "", 
+        leaderEmail: "" 
+      });
     }
     setDialog({ open: true, team });
   };
 
   const handleSave = async () => {
     if (dialog.team) {
-      await updateTeam.mutateAsync({ id: dialog.team.id, data: formData });
+      try {
+        await updateTeam.mutateAsync({ 
+          id: dialog.team.id, 
+          data: {
+              name: formData.name,
+              total_budget: Number(formData.total_budget),
+              logo_url: formData.logo_url,
+              leader_name: formData.leaderName,
+              leader_email: formData.leaderEmail
+          } 
+        });
+        toast.success("Team updated successfully");
+      } catch (error) {
+        console.error("Error updating team:", error);
+        toast.error("Failed to update team: " + error.message);
+      }
     } else {
-      await createTeam.mutateAsync({ ...formData, spent: 0, is_online: false });
+        // Create Logic
+      if (!formData.name || !formData.leaderName || !formData.leaderEmail) {
+          toast.error("Please fill in Name, Leader Name, and Leader Email");
+          return;
+      }
+      
+      try {
+           // 1. Create Team in DB
+           const teamDataToInsert = {
+              name: formData.name,
+              total_budget: Number(formData.total_budget || 0),
+              logo_url: formData.logo_url,
+              leader_name: formData.leaderName,
+              leader_email: formData.leaderEmail,
+              participants: [{ name: formData.leaderName, role: "Leader" }],
+              spent: 0,
+              created_by: 'admin'
+           };
+
+           const { data: teamRows, error: teamError } = await supabase
+            .from('teams')
+            .insert([teamDataToInsert])
+            .select();
+          
+          if (teamError) throw teamError;
+          const createdTeam = teamRows[0];
+
+          // 2. Create User
+           const { error: userError } = await supabase.from('users').insert([{
+               email: formData.leaderEmail,
+               role: 'user',
+               status: 'registered',
+               team_id: createdTeam.id
+          }]);
+           if (userError) console.warn("User creation warning:", userError.message);
+
+          // 3. Send Email
+           try {
+            await fetch('http://localhost:5000/api/send-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: formData.leaderEmail,
+                    username: formData.leaderName,
+                    loginLink: window.location.origin
+                }),
+            });
+            toast.success("Credentials emailed to team leader!");
+          } catch (emailErr) {
+              console.error("Failed to send email:", emailErr);
+              toast.warning("Team created, but email notification failed.");
+          }
+
+          queryClient.invalidateQueries({ queryKey: ["teams"] });
+          setDialog({ open: false, team: null });
+          toast.success("Team created successfully");
+          
+      } catch (error) {
+          console.error("Error creating team:", error);
+          toast.error("Failed to create team: " + error.message);
+      }
     }
   };
 
@@ -176,7 +277,7 @@ export default function Teams() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => deleteTeam.mutate(team.id)}
+                      onClick={() => handleDeleteTeam(team)}
                       className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -239,19 +340,42 @@ export default function Teams() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialog.open} onOpenChange={(open) => setDialog({ ...dialog, open })}>
-        <DialogContent className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-md">
+        <DialogContent aria-describedby={undefined} className="bg-[#0F1629] border-[#19388A]/50 text-white max-w-md">
           <DialogHeader>
             <DialogTitle>{dialog.team ? "Edit Team" : "Add New Team"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div>
-              <Label className="text-gray-400">Team Name</Label>
+              <Label className="text-gray-400">Team Name *</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
               />
             </div>
+            
+            {!dialog.team && (
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-gray-400">Leader Name *</Label>
+                      <Input
+                        value={formData.leaderName}
+                        onChange={(e) => setFormData({ ...formData, leaderName: e.target.value })}
+                        placeholder="John Doe"
+                        className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-gray-400">Leader Email *</Label>
+                      <Input
+                        value={formData.leaderEmail}
+                        onChange={(e) => setFormData({ ...formData, leaderEmail: e.target.value })}
+                        placeholder="john@example.com"
+                        className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
+                      />
+                    </div>
+                </div>
+            )}
             <div>
               <Label className="text-gray-400">Total Budget (in Lakhs)</Label>
               <Input
@@ -262,13 +386,13 @@ export default function Teams() {
               />
             </div>
             <div>
-              <Label className="text-gray-400">Logo URL (optional)</Label>
-              <Input
-                value={formData.logo_url}
-                onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-                placeholder="https://..."
-                className="mt-2 bg-[#0B1020] border-[#19388A]/50 text-white"
-              />
+              <Label className="text-gray-400">Logo Upload</Label>
+              <div className="mt-2">
+                <ImageUpload
+                  value={formData.logo_url}
+                  onChange={(url) => setFormData({ ...formData, logo_url: url })}
+                />
+              </div>
             </div>
             <div>
               <Label className="text-gray-400">Team Members</Label>

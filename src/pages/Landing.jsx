@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Trophy } from 'lucide-react';
+import { ArrowRight, Trophy, Gavel } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -43,10 +44,40 @@ const Landing = () => {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="absolute bottom-8 text-slate-600 text-sm">
-        © 2026 Bid2Unicorn. All rights reserved.
+      {/* Animated Ticker */}
+      <div className="absolute bottom-0 w-full bg-[#0B1020]/80 border-t border-[#19388A]/30 backdrop-blur-sm py-3 overflow-hidden z-20">
+        <motion.div
+          animate={{ x: [0, -1000] }}
+          transition={{
+            repeat: Infinity,
+            duration: 20,
+            ease: "linear",
+          }}
+          className="whitespace-nowrap flex gap-8 text-[#4F91CD] font-mono text-sm tracking-widest"
+        >
+          {Array(10).fill("STARTUP PREMIER LEAGUE • LIVE BIDDING • HIGH STAKES • UNICORN PORTFOLIO • THE ENTREPRENEURSHIP CELL RCPIT • ").map((text, i) => (
+            <span key={i}>{text}</span>
+          ))}
+        </motion.div>
       </div>
+
+      {/* Floating Gavel */}
+      <motion.div 
+        className="absolute bottom-16 right-8 md:right-16 z-30 flex flex-col items-center"
+        initial={{ rotate: 0 }}
+        whileHover={{ scale: 1.1 }}
+      >
+         <div className="relative">
+            <motion.div
+                animate={{ rotate: [0, -20, 0] }}
+                transition={{ repeat: Infinity, duration: 2, repeatDelay: 1.5 }}
+            >
+                <Gavel className="w-16 h-16 text-[#FF6B35] drop-shadow-[0_0_15px_rgba(255,107,53,0.5)]" />
+            </motion.div>
+            {/* Sound block / Plate */}
+            <div className="w-12 h-3 bg-[#19388A] rounded-full mt-[-4px] ml-2 border border-[#4F91CD]/50 shadow-lg blur-[1px]" />
+         </div>
+      </motion.div>
     </div>
   );
 };

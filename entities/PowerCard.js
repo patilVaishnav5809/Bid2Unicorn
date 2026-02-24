@@ -9,12 +9,14 @@ export default {
     "type": {
       "type": "string",
       "enum": [
-        "right_to_match",
-        "stealth_bid",
-        "double_down",
-        "veto",
-        "wildcard",
-        "budget_boost"
+        "double_value",
+        "steal_startup",
+        "freeze_budget",
+        "emergency_budget",
+        "reverse_auction",
+        "block_team",
+        "insider_info",
+        "wild_card"
       ],
       "description": "Card type"
     },

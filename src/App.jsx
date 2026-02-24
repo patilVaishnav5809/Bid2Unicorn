@@ -46,10 +46,12 @@ const DynamicRoutes = () => {
     if (error) return (
         <div className="p-10 text-red-500">
             <h1 className="text-xl font-bold">Failed to load app configuration</h1>
-            <pre className="mt-4 bg-gray-900 p-4 rounded text-white overflow-auto">
-                {error.toString()}
-                {error.stack && <div className="mt-2 text-sm text-gray-400">{error.stack}</div>}
-            </pre>
+            <p className="mt-2 text-gray-400">Please refresh the page or contact support.</p>
+            {import.meta.env.DEV && (
+              <pre className="mt-4 bg-gray-900 p-4 rounded text-white overflow-auto text-sm">
+                  {error.toString()}
+              </pre>
+            )}
         </div>
     );
     if (!config) return <div className="fixed inset-0 flex items-center justify-center">Loading Configuration...</div>;
@@ -111,7 +113,7 @@ function App() {
       <Suspense fallback={<div className="p-10">Loading Suspense...</div>}>
         <AuthProvider>
             <QueryClientProvider client={queryClientInstance}>
-            <Router>
+            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <NavigationTracker />
                 <AuthenticatedApp />
             </Router>

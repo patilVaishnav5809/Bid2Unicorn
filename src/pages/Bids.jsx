@@ -131,7 +131,7 @@ export default function Bids() {
                 </tr>
               </thead>
               <tbody>
-                {filteredBids.map((bid, index) => {
+                {filteredBids.map((bid) => {
                   const startup = startups.find(s => s.id === bid.startup_id);
                   const team = teams.find(t => t.id === bid.team_id);
                   
