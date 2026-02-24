@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/AuthContext";
 import { Rocket, Users, Gavel, Zap, Newspaper, DollarSign } from "lucide-react";
 
 import TopBar from "../components/admin/TopBar";
@@ -55,22 +56,26 @@ export default function AdminDashboard() {
   const [allotCardsDialog, setAllotCardsDialog] = useState(false);
   const [allottingTeam, setAllottingTeam] = useState(null);
 
-  // Check if user is admin
+  const { user, isLoadingAuth, navigateToLogin } = useAuth();
+
+  // Check if user is admin once auth is loaded
   useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        const user = await base44.auth.me();
-        if (user.role !== "admin") {
-          // Not admin, redirect to user dashboard
-          window.location.href = "/UserDashboard";
-        }
-      } catch {
-        // Not logged in, redirect to login
-        base44.auth.redirectToLogin();
+    if (!isLoadingAuth) {
+      if (!user) {
+        navigateToLogin();
+      } else if (user.role !== "admin") {
+        window.location.href = "/UserDashboard";
       }
-    };
-    checkAdmin();
-  }, []);
+    }
+  }, [user, isLoadingAuth, navigateToLogin]);
+
+  if (isLoadingAuth) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#050814]">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   // Fetch all data
   const { data: startups = [] } = useQuery({
